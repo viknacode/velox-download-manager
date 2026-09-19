@@ -28,6 +28,10 @@ public sealed class AppSettings
     public bool StartDownloadsImmediately { get; set; } = true;
     public bool BrowserAskBeforeDownload { get; set; } = true;
     public bool AutoResolveShortLinks { get; set; } = true;
+    /// <summary>Caminho do ffmpeg.exe (vazio = procurar em %LOCALAPPDATA%VeloxDM	ools e no PATH).</summary>
+    public string? FfmpegPath { get; set; }
+    /// <summary>Conexões paralelas para segmentos de stream.</summary>
+    public int StreamConnections { get; set; } = 8;
 
     public AppSettings Clone() => (AppSettings)MemberwiseClone();
 

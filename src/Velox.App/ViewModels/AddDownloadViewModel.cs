@@ -3,6 +3,7 @@ using System.Windows.Input;
 using Velox.Core.Models;
 using Velox.Core.Resolvers;
 using Velox.Core.Services;
+using Velox.Core.Streams;
 using Velox.Core.Utils;
 
 namespace Velox.App.ViewModels;
@@ -33,6 +34,7 @@ public sealed class AddDownloadViewModel : ObservableObject
         CancelCommand = new RelayCommand(() => RequestClose?.Invoke(false));
         PasteCommand = new RelayCommand(Paste);
         BrowseCommand = new RelayCommand(Browse);
+        InstallFfmpegCommand = new AsyncRelayCommand(InstallFfmpegAsync, () => !_ffmpegInstalling && !HasFfmpeg);
 
         if (urls != null && urls.Count > 1)
         {
@@ -76,6 +78,7 @@ public sealed class AddDownloadViewModel : ObservableObject
     public ICommand CancelCommand { get; }
     public ICommand PasteCommand { get; }
     public ICommand BrowseCommand { get; }
+    public ICommand InstallFfmpegCommand { get; }
 
     public List<CategoryOption> Categories { get; }
 
@@ -89,6 +92,7 @@ public sealed class AddDownloadViewModel : ObservableObject
             if (Set(ref _url, value))
             {
                 ResolvedUrl = null;
+                Stream = null;
                 _ = ProbeDebouncedAsync();
                 OnPropertyChanged(nameof(CanDownload));
             }
@@ -216,6 +220,104 @@ public sealed class AddDownloadViewModel : ObservableObject
     private static bool IsHtml(string? contentType) =>
         contentType != null && contentType.Contains("html", StringComparison.OrdinalIgnoreCase);
 
+    // ------------------------------------------------------------ stream (HLS/DASH)
+    private StreamInfo? _stream;
+    /// <summary>Preenchido quando a URL é um manifesto HLS/DASH; o download vira um StreamDownloadTask.</summary>
+    public StreamInfo? Stream
+    {
+        get => _stream;
+        private set
+        {
+            if (!Set(ref _stream, value)) return;
+            Variants = value == null
+                ? new List<VariantOption>()
+                : value.Variants.Select(v => new VariantOption(v, this)).ToList();
+            OnPropertyChanged(nameof(Variants));
+            _selectedVariant = value?.Best;
+            foreach (var v in Variants) v.NotifySelection();
+            OnPropertyChanged(nameof(IsStream));
+            OnPropertyChanged(nameof(StreamTitle));
+            OnPropertyChanged(nameof(StreamSummary));
+            OnPropertyChanged(nameof(HasManyVariants));
+            OnPropertyChanged(nameof(HasFfmpeg));
+            OnPropertyChanged(nameof(FfmpegNote));
+            OnPropertyChanged(nameof(ConnectionsMax));
+            if (value != null) Connections = Math.Clamp(_main.Settings.StreamConnections, 1, 16);
+            else Connections = _main.Settings.ConnectionsPerDownload;
+        }
+    }
+
+    public bool IsStream => _stream != null;
+    public List<VariantOption> Variants { get; private set; } = new();
+    public bool HasManyVariants => Variants.Count > 1;
+    public int ConnectionsMax => IsStream ? 16 : 32;
+
+    private StreamVariant? _selectedVariant;
+    public StreamVariant? SelectedVariant
+    {
+        get => _selectedVariant;
+        set
+        {
+            if (ReferenceEquals(_selectedVariant, value)) return;
+            _selectedVariant = value;
+            OnPropertyChanged();
+            foreach (var v in Variants) v.NotifySelection();
+        }
+    }
+
+    public string StreamTitle => _stream == null ? "" : _stream.Kind == StreamKind.Dash ? "Stream DASH (MPEG-DASH)" : "Stream HLS (m3u8)";
+
+    public string StreamSummary
+    {
+        get
+        {
+            if (_stream == null) return "";
+            var parts = new List<string>();
+            if (_stream.DurationSeconds > 0) parts.Add(FormatHelper.Duration(_stream.DurationSeconds));
+            parts.Add(_stream.Variants.Count == 1 ? "1 qualidade" : $"{_stream.Variants.Count} qualidades");
+            if (_stream.IsEncrypted && _stream.DrmSystem == null) parts.Add("AES-128");
+            if (_stream.Variants.Any(v => v.HasSeparateAudio)) parts.Add("áudio separado");
+            return string.Join("  •  ", parts);
+        }
+    }
+
+    public bool HasFfmpeg => _main.FfmpegPath != null;
+
+    private bool _ffmpegInstalling;
+    private string _ffmpegProgress = "";
+    public string FfmpegProgress { get => _ffmpegProgress; private set => Set(ref _ffmpegProgress, value); }
+
+    public string FfmpegNote => HasFfmpeg
+        ? "Os segmentos serão juntados em um MP4 pelo ffmpeg."
+        : "Sem ffmpeg o vídeo é salvo como .ts (ou vídeo e áudio em arquivos separados). Instale para gerar MP4.";
+
+    private async Task InstallFfmpegAsync()
+    {
+        _ffmpegInstalling = true;
+        System.Windows.Input.CommandManager.InvalidateRequerySuggested();
+        try
+        {
+            FfmpegProgress = "Baixando ffmpeg…";
+            var progress = new Progress<(long Done, long Total)>(p =>
+                FfmpegProgress = p.Total > 0
+                    ? $"Baixando ffmpeg… {FormatHelper.Bytes(p.Done)} de {FormatHelper.Bytes(p.Total)}"
+                    : $"Baixando ffmpeg… {FormatHelper.Bytes(p.Done)}");
+            await _main.InstallFfmpegAsync(progress, CancellationToken.None);
+            FfmpegProgress = "";
+        }
+        catch (Exception ex)
+        {
+            FfmpegProgress = "Falha ao instalar: " + ex.Message;
+        }
+        finally
+        {
+            _ffmpegInstalling = false;
+            OnPropertyChanged(nameof(HasFfmpeg));
+            OnPropertyChanged(nameof(FfmpegNote));
+            System.Windows.Input.CommandManager.InvalidateRequerySuggested();
+        }
+    }
+
     // ------------------------------------------------------------ sondagem
     private ProbeResult? _probe;
     public ProbeResult? Probe
@@ -321,6 +423,38 @@ public sealed class AddDownloadViewModel : ObservableObject
                 }
             }
 
+            // manifesto HLS/DASH? lista as qualidades e troca o modo do diálogo
+            var probedUrl = _resolvedUrl ?? url;
+            if (StreamProbe.LooksLikeManifestUrl(probedUrl) || StreamProbe.IsManifestContentType(result.ContentType))
+            {
+                ProbeMessage = "Lendo manifesto do stream…";
+                StreamInfo? info = null;
+                try { info = await _main.ProbeStreamAsync(probedUrl, ParseHeaders(), string.IsNullOrWhiteSpace(_referer) ? null : _referer, result.ContentType, cts.Token); }
+                catch (OperationCanceledException) { throw; }
+                catch (Exception ex) { resolvedNote = "Não foi possível ler o manifesto: " + ex.Message; }
+                if (version != _probeVersion) return;
+
+                if (info != null)
+                {
+                    Stream = info;
+                    Probe = result;
+                    ProbeState = info.IsLive || info.DrmSystem != null || info.Variants.Count == 0 ? "error" : "ok";
+                    ProbeSizeText = info.DurationSeconds > 0 ? FormatHelper.Duration(info.DurationSeconds) : "duração desconhecida";
+                    ProbeTypeText = info.Kind == StreamKind.Dash ? "DASH" : "HLS";
+                    ProbeHostText = result.Host;
+                    ProbeResumable = true;
+                    ProbeMessage = info.IsLive ? "Transmissão ao vivo — o Velox baixa apenas vídeos sob demanda (VOD)."
+                        : info.DrmSystem != null ? $"Stream protegido por DRM ({info.DrmSystem}) — não é possível baixar."
+                        : info.Variants.Count == 0 ? "O manifesto não lista nenhuma faixa de vídeo."
+                        : $"Stream segmentado reconhecido — {info.Variants.Count} {(info.Variants.Count == 1 ? "qualidade" : "qualidades")} disponíveis";
+
+                    if (!_fileNameEdited || _fileName.EndsWith(".m3u8", StringComparison.OrdinalIgnoreCase) || _fileName.EndsWith(".mpd", StringComparison.OrdinalIgnoreCase))
+                        Set(ref _fileName, StreamFileName(result.FileName, probedUrl), nameof(FileName));
+                    if (!_categoryEdited) SetCategoryInternal(CategoryDetector.Video);
+                    return;
+                }
+            }
+
             Probe = result;
             ProbeState = "ok";
             ProbeSizeText = result.Size > 0 ? FormatHelper.Bytes(result.Size) : "tamanho desconhecido";
@@ -353,6 +487,34 @@ public sealed class AddDownloadViewModel : ObservableObject
 
     private static string HostOf(string url) => Uri.TryCreate(url, UriKind.Absolute, out var u) ? u.Host : url;
 
+    private static readonly string[] GenericStreamNames = { "index", "master", "playlist", "manifest", "video", "stream", "prog_index", "chunklist", "hls", "dash" };
+
+    /// <summary>Nome de saída para um stream: troca .m3u8/.mpd por .mp4 e evita nomes genéricos (playlist, manifest, index…).</summary>
+    private static string StreamFileName(string? probedName, string url)
+    {
+        var name = Path.GetFileNameWithoutExtension(probedName ?? "");
+        if (string.IsNullOrWhiteSpace(name) || name.Length < 3 || GenericStreamNames.Contains(name, StringComparer.OrdinalIgnoreCase))
+        {
+            // usa o último trecho "falante" do caminho, senão um nome com data
+            name = "";
+            if (Uri.TryCreate(url, UriKind.Absolute, out var u))
+            {
+                var segs = u.AbsolutePath.Split('/', StringSplitOptions.RemoveEmptyEntries);
+                for (int i = segs.Length - 2; i >= 0; i--)
+                {
+                    var s = Uri.UnescapeDataString(segs[i]);
+                    if (s.Length >= 3 && !GenericStreamNames.Contains(s, StringComparer.OrdinalIgnoreCase))
+                    {
+                        name = Path.GetFileNameWithoutExtension(s);
+                        break;
+                    }
+                }
+            }
+            if (string.IsNullOrWhiteSpace(name) || name.Length < 3) name = "video-" + DateTime.Now.ToString("yyyyMMdd-HHmmss");
+        }
+        return FileNameHelper.Sanitize(name) + ".mp4";
+    }
+
     private Dictionary<string, string>? ParseHeaders()
     {
         if (string.IsNullOrWhiteSpace(_headersText)) return null;
@@ -371,7 +533,8 @@ public sealed class AddDownloadViewModel : ObservableObject
     // ------------------------------------------------------------ envio
     public bool CanDownload => _isBatch
         ? Services.UrlHelper.ExtractUrls(_batchUrls).Count > 0
-        : Services.UrlHelper.IsHttpUrl(_url.Trim()) && !IsProbing;
+        : Services.UrlHelper.IsHttpUrl(_url.Trim()) && !IsProbing
+          && !(_stream != null && (_stream.IsLive || _stream.DrmSystem != null || _stream.Variants.Count == 0));
 
     private bool CanSubmit() => CanDownload && !string.IsNullOrWhiteSpace(_directory);
 
@@ -408,7 +571,10 @@ public sealed class AddDownloadViewModel : ObservableObject
                 ExpectedHash = string.IsNullOrWhiteSpace(_expectedHash) ? null : _expectedHash.Trim(),
                 Category = _categoryEdited ? _category : null,
                 StartImmediately = _startImmediately,
-                Probe = _probe
+                Probe = _stream != null ? null : _probe,
+                Kind = _stream?.Kind ?? StreamKind.File,
+                VariantId = _stream != null ? (_selectedVariant ?? _stream.Best)?.Id : null,
+                VariantLabel = _stream != null ? (_selectedVariant ?? _stream.Best)?.Label : null
             });
         }
 
@@ -450,6 +616,42 @@ public sealed class AddDownloadViewModel : ObservableObject
     public void Cancel()
     {
         _probeCts?.Cancel();
+    }
+
+    public sealed class VariantOption : ObservableObject
+    {
+        private readonly AddDownloadViewModel _owner;
+
+        public VariantOption(StreamVariant variant, AddDownloadViewModel owner)
+        {
+            Variant = variant;
+            _owner = owner;
+        }
+
+        public StreamVariant Variant { get; }
+        public string Label => Variant.Label;
+
+        public string Detail
+        {
+            get
+            {
+                var parts = new List<string>();
+                if (Variant.Width > 0 && Variant.Height > 0) parts.Add($"{Variant.Width}×{Variant.Height}");
+                if (!string.IsNullOrEmpty(Variant.Codecs)) parts.Add(Variant.Codecs.Split(',')[0].Split('.')[0]);
+                if (Variant.HasSeparateAudio && !string.IsNullOrEmpty(Variant.AudioLabel)) parts.Add("áudio: " + Variant.AudioLabel);
+                return string.Join(" · ", parts);
+            }
+        }
+
+        public bool HasDetail => Detail.Length > 0;
+
+        public bool IsSelected
+        {
+            get => ReferenceEquals(_owner.SelectedVariant, Variant);
+            set { if (value) _owner.SelectedVariant = Variant; }
+        }
+
+        public void NotifySelection() => OnPropertyChanged(nameof(IsSelected));
     }
 
     public sealed class CategoryOption : ObservableObject

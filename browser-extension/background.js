@@ -267,6 +267,19 @@ chrome.runtime.onMessage.addListener((msg, _sender, reply) => {
 
 const mediaByTab = new Map();   // tabId -> [{url, type, size, at}]
 const MEDIA_EXT = /\.(mp4|m4v|webm|mkv|mov|avi|flv|ts|mp3|m4a|aac|ogg|opus|wav|flac)(?:$|[?#])/i;
+const MANIFEST_EXT = /\.(m3u8|m3u|mpd)(?:$|[?#])/i;
+const SEGMENT_EXT = /\.(ts|m4s|m4v|m4a|aac|mp4|webm|cmfv|cmfa)(?:$|[?#])/i;
+
+// 'hls' | 'dash' | null — manifesto de stream segmentado, por content-type ou extensão
+function manifestKind(url, type) {
+  if (/mpegurl/.test(type)) return 'hls';
+  if (/dash\+xml/.test(type)) return 'dash';
+  const m = MANIFEST_EXT.exec(url);
+  if (m) return m[1].toLowerCase() === 'mpd' ? 'dash' : 'hls';
+  return null;
+}
+
+function dirOf(url) { try { const u = new URL(url); return u.origin + u.pathname.slice(0, u.pathname.lastIndexOf('/') + 1); } catch { return ''; } }
 
 function normalizeMediaUrl(raw) {
   // remove parâmetros de faixa (chunks) para agrupar o mesmo arquivo
@@ -277,14 +290,19 @@ function normalizeMediaUrl(raw) {
   } catch { return raw; }
 }
 
-function rememberMedia(tabId, url, type, size) {
+function rememberMedia(tabId, url, type, size, kind) {
   if (tabId < 0) return;
-  const key = normalizeMediaUrl(url);
+  const key = kind ? url : normalizeMediaUrl(url);
   let list = mediaByTab.get(tabId);
   if (!list) { list = []; mediaByTab.set(tabId, list); }
   const existing = list.find(m => m.url === key);
   if (existing) { if (size > existing.size) existing.size = size; existing.at = Date.now(); return; }
-  list.push({ url: key, type, size, at: Date.now() });
+  if (kind) {
+    // playlists de variante/áudio ficam na mesma pasta (ou abaixo) do master, que chega primeiro: guarda só o master
+    const dir = dirOf(key);
+    if (list.some(m => m.kind === kind && dir.startsWith(dirOf(m.url)))) return;
+  }
+  list.push({ url: key, type, size, at: Date.now(), kind: kind || '' });
   if (list.length > 40) list.shift();
 }
 
@@ -293,17 +311,30 @@ safe(() => chrome.webRequest.onHeadersReceived.addListener(details => {
     if (details.tabId < 0 || !/^https?:/i.test(details.url)) return;
     const h = Object.fromEntries((details.responseHeaders || []).map(x => [x.name.toLowerCase(), x.value || '']));
     const type = (h['content-type'] || '').toLowerCase();
+
+    // manifestos HLS/DASH: o Velox baixa os segmentos e junta (o manifesto em si é pequeno)
+    const kind = manifestKind(details.url, type);
+    if (kind) {
+      const mime = /mpegurl|dash\+xml/.test(type) ? type.split(';')[0].trim()
+        : kind === 'dash' ? 'application/dash+xml' : 'application/vnd.apple.mpegurl';
+      rememberMedia(details.tabId, details.url, mime, -1, kind);
+      return;
+    }
+
     const isMedia = type.startsWith('video/') || type.startsWith('audio/') ||
       (type === 'application/octet-stream' && MEDIA_EXT.test(details.url)) ||
       (!type && MEDIA_EXT.test(details.url));
     if (!isMedia) return;
-    if (/mpegurl|dash\+xml/.test(type)) return; // manifestos HLS/DASH: sem suporte ainda
 
     let size = -1;
     const range = /\/(\d+)\s*$/.exec(h['content-range'] || '');
     if (range) size = parseInt(range[1], 10);
     else if (h['content-length']) size = parseInt(h['content-length'], 10);
     if (size > 0 && size < 200 * 1024) return; // prévias/miniaturas
+
+    // com um manifesto já visto na aba, os pedaços (.ts/.m4s, faixas parciais) são segmentos dele — não ofereça um a um
+    const list = mediaByTab.get(details.tabId);
+    if (list && list.some(m => m.kind) && (/mp2t|iso\.segment/.test(type) || SEGMENT_EXT.test(details.url) || h['content-range'])) return;
 
     rememberMedia(details.tabId, details.url, type, size);
   } catch { }
@@ -317,6 +348,7 @@ function sanitizeFileName(name) {
 }
 
 function extForMedia(url, mime) {
+  if (manifestKind(url, (mime || '').toLowerCase())) return '.mp4'; // stream: o Velox junta os segmentos em MP4
   const m = MEDIA_EXT.exec(url);
   if (m) return '.' + m[1].toLowerCase();
   const t = (mime || '').split(';')[0].trim();

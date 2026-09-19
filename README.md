@@ -25,13 +25,74 @@ queda de conexão ou reinício do PC.
 - Verificação de integridade (MD5 / SHA-1 / SHA-256), detecção de nome via
   `Content-Disposition`, categorias automáticas por extensão/MIME, cabeçalhos
   customizados (Cookie, Authorization, Referer), proxy e User-Agent configuráveis.
+- **Streams segmentados HLS e DASH** ([Streams](src/Velox.Core/Streams)): playlists
+  `.m3u8` (master e mídia, TS ou fMP4, `EXT-X-KEY` AES-128 com IV explícito ou por
+  sequência, `EXT-X-MAP`, `BYTERANGE`) e manifestos `.mpd` (`SegmentTemplate` com `$Number# Velox Download Manager
+
+Gerenciador de downloads para Windows em C# / .NET 10 + WPF, com engine de download
+segmentado (estilo IDM) que usa toda a banda disponível e retoma downloads
+interrompidos exatamente de onde pararam — mesmo depois de fechar o programa,
+queda de conexão ou reinício do PC.
+
+![Velox](docs/screenshot-main.png)
+
+## Recursos
+
+**Engine (Velox.Core)**
+- Download com até **64 conexões paralelas** por arquivo (HTTP Range).
+- **Segmentação dinâmica**: quando uma conexão termina, ela "rouba" metade do maior
+  segmento restante — todas as conexões ficam ocupadas até o último byte.
+- **Retomada real**: o progresso de cada segmento é persistido em JSON; ao reabrir
+  o app os downloads continuam de onde pararam. Valida ETag/tamanho e reinicia
+  automaticamente se o arquivo mudou no servidor.
+- **Resiliência**: cada conexão tenta reconectar com backoff exponencial (até 30 s),
+  timeout de leitura para conexões travadas, 429/5xx tratados como transitórios,
+  e re-agendamento automático de downloads que falharem.
+- Limitador de banda global (token bucket), fila com N downloads simultâneos,
+  pré-alocação com arquivo esparso (sem zero-fill de gigabytes), gravação
+  posicional thread-safe (`RandomAccess.WriteAsync`).
+/`$Time# Velox Download Manager
+
+Gerenciador de downloads para Windows em C# / .NET 10 + WPF, com engine de download
+segmentado (estilo IDM) que usa toda a banda disponível e retoma downloads
+interrompidos exatamente de onde pararam — mesmo depois de fechar o programa,
+queda de conexão ou reinício do PC.
+
+![Velox](docs/screenshot-main.png)
+
+## Recursos
+
+**Engine (Velox.Core)**
+- Download com até **64 conexões paralelas** por arquivo (HTTP Range).
+- **Segmentação dinâmica**: quando uma conexão termina, ela "rouba" metade do maior
+  segmento restante — todas as conexões ficam ocupadas até o último byte.
+- **Retomada real**: o progresso de cada segmento é persistido em JSON; ao reabrir
+  o app os downloads continuam de onde pararam. Valida ETag/tamanho e reinicia
+  automaticamente se o arquivo mudou no servidor.
+- **Resiliência**: cada conexão tenta reconectar com backoff exponencial (até 30 s),
+  timeout de leitura para conexões travadas, 429/5xx tratados como transitórios,
+  e re-agendamento automático de downloads que falharem.
+- Limitador de banda global (token bucket), fila com N downloads simultâneos,
+  pré-alocação com arquivo esparso (sem zero-fill de gigabytes), gravação
+  posicional thread-safe (`RandomAccess.WriteAsync`).
+,
+  `SegmentTimeline`, `SegmentList`, `SegmentBase`, `BaseURL`). Os segmentos são baixados com
+  N conexões em paralelo e ficam em `<arquivo>.vxparts/`, então o download **retoma por
+  segmento** após pausa, falha ou fechamento do app. O **ffmpeg** junta tudo em MP4 sem
+  recodificar (`-c copy`, `+faststart`), inclusive vídeo + áudio separados (DASH e HLS com
+  grupos de áudio); pode ser instalado por um clique nas Configurações (build oficial
+  "essentials") ou apontado manualmente. Sem ffmpeg o resultado fica em `.ts`/arquivos separados.
+  Live e DRM (Widevine/PlayReady/FairPlay, `SAMPLE-AES`) são detectados e recusados com aviso.
 
 **Interface (Velox.App)**
 - Tema escuro com chrome customizado (cantos arredondados via DWM), sidebar com
   filtros e categorias, cards com barra que mostra **cada segmento** em tempo real.
 - Painel de detalhes com estatísticas, mapa de segmentos e gráfico de velocidade (60 s).
 - Diálogo "Novo download" que sonda o servidor enquanto você digita (tamanho, tipo,
-  suporte a retomada), lote de vários links, opções avançadas.
+  suporte a retomada), lote de vários links, opções avançadas. Para um `.m3u8`/`.mpd` lê o
+  manifesto e mostra as **qualidades** (resolução, bitrate, codec, faixa de áudio), duração e
+  se há AES; o card do download mostra a qualidade escolhida, "N de M segmentos", a barra com
+  o padrão real de segmentos e a fase **Juntando**.
 - Captura de links da área de transferência, arrastar-e-soltar de URLs, atalhos
   (Ctrl+N, Ctrl+V, Delete, Esc), bandeja do sistema com menu e notificações,
   instância única, iniciar com o Windows, toasts in-app.
@@ -50,7 +111,9 @@ queda de conexão ou reinício do PC.
   com cookies/Referer e nome sugerido pelo título da página. Um *sniffer* de mídia
   (`webRequest`, só leitura) encontra o arquivo real mesmo quando o player usa `blob:`;
   com várias opções (qualidades, áudio) abre um painel com tipo e tamanho. Streams
-  segmentados (HLS/DASH, ex.: YouTube) ainda não são suportados.
+  **HLS/DASH** também: o sniffer guarda o manifesto master (ignorando playlists de variante e
+  os segmentos `.ts`/`.m4s`) e o Velox baixa e junta os pedaços. YouTube e players com
+  DRM continuam fora.
 
   ![Botão de vídeo](docs/screenshot-video-button.png)
 
@@ -99,6 +162,11 @@ src/Velox.Core/            biblioteca sem dependência de UI
   Engine/DownloadTask.cs   ciclo de vida de um download: sondagem, segmentos, workers, retry, finalização
   Engine/UrlProber.cs      requisição Range: bytes=0-0 para descobrir tamanho/nome/retomada
   Engine/BandwidthLimiter  limitador global de banda
+  Engine/StreamDownloadTask.cs  download de HLS/DASH: segmentos em paralelo, AES-128, retomada por segmento, mux
+  Streams/HlsParser.cs     playlists m3u8 (master/mídia, chaves, init, byte-range)
+  Streams/DashParser.cs    MPD (templates, timeline, lista, base) → lista de segmentos
+  Streams/StreamProbe.cs   reconhece manifesto, lista qualidades, monta o plano de download
+  Streams/Ffmpeg.cs        localiza/instala o ffmpeg e faz o remux sem recodificar
   Services/DownloadManager fila, concorrência, persistência, estatísticas, auto-retry
   Services/StateStore      downloads.json / settings.json em %LOCALAPPDATA%\VeloxDM
 src/Velox.App/             WPF (MVVM)
@@ -117,4 +185,6 @@ browser-extension/         extensão MV3 (copiada para <saída>/extension)
 
 Dados do app: `%LOCALAPPDATA%\VeloxDM\` (`downloads.json`, `settings.json`, `velox.log`,
 `com.velox.dm.json` — manifesto do host nativo).
-Arquivos em andamento ficam com a extensão `.vxpart` e são renomeados ao concluir.
+Arquivos em andamento ficam com a extensão `.vxpart` e são renomeados ao concluir; streams
+guardam os segmentos em `<arquivo>.vxparts/` até a junção. O ffmpeg instalado pelo app fica em
+`%LOCALAPPDATA%\VeloxDM\tools\ffmpeg.exe`.

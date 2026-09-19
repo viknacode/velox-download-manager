@@ -25,7 +25,9 @@ estiver fechado, ele é aberto automaticamente.
 - **Botão nos vídeos**: passe o mouse sobre um vídeo → aparece "Baixar com Velox" no canto
   superior direito. Clique envia ao Velox (nome = título da página). Se houver mais de um
   arquivo (qualidades/áudio), abre um painel com tipo e tamanho. Pode ser desligado no popup.
-  Funciona com arquivos progressivos (mp4, webm, mp3…); HLS/DASH ainda não.
+  Funciona com arquivos progressivos (mp4, webm, mp3…) e com streams **HLS/DASH**: o sniffer
+  guarda o manifesto master (`.m3u8`/`.mpd`) visto na aba e o Velox baixa os segmentos e
+  junta em MP4 (escolha da qualidade no diálogo do Velox). YouTube e players com DRM não.
 
 ## Como funciona
 

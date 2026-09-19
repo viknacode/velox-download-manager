@@ -8,5 +8,14 @@ public enum DownloadStatus
     Paused,
     Completed,
     Failed,
-    Verifying
+    Verifying,
+    /// <summary>Juntando segmentos / remuxando (streams HLS e DASH).</summary>
+    Merging
+}
+
+public enum StreamKind
+{
+    File,
+    Hls,
+    Dash
 }

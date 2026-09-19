@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using Velox.Core.Engine;
 using Velox.Core.Models;
+using Velox.Core.Streams;
 
 namespace Velox.Core.Services;
 
@@ -12,7 +13,7 @@ public sealed class DownloadManager : IDisposable
 {
     private readonly object _lock = new();
     private readonly List<DownloadItem> _items = new();
-    private readonly Dictionary<Guid, DownloadTask> _tasks = new();
+    private readonly Dictionary<Guid, IDownloadTask> _tasks = new();
     private readonly StateStore _store;
     private readonly SettingsStore _settingsStore;
     private readonly BandwidthLimiter _limiter = new();
@@ -54,7 +55,7 @@ public sealed class DownloadManager : IDisposable
         {
             item.DownloadedBytes = item.GetDownloadedBytes();
             if (item.Status is DownloadStatus.Queued or DownloadStatus.Connecting
-                or DownloadStatus.Downloading or DownloadStatus.Verifying)
+                or DownloadStatus.Downloading or DownloadStatus.Verifying or DownloadStatus.Merging)
             {
                 item.Status = Settings.AutoResumeOnStartup ? DownloadStatus.Queued : DownloadStatus.Paused;
             }
@@ -100,6 +101,17 @@ public sealed class DownloadManager : IDisposable
         string? referer = null, CancellationToken ct = default)
         => UrlProber.ProbeAsync(_http, url, headers, referer, ct);
 
+    /// <summary>Se a URL for um manifesto HLS/DASH, devolve as variantes; senão null.</summary>
+    public Task<StreamInfo?> ProbeStreamAsync(string url, IDictionary<string, string>? headers, string? referer,
+        string? knownContentType, CancellationToken ct = default)
+        => StreamProbe.ProbeAsync(_http, url, headers, referer, knownContentType, ct);
+
+    /// <summary>ffmpeg.exe disponível (configuração, pasta tools ou PATH), ou null.</summary>
+    public string? FfmpegPath => Ffmpeg.Locate(DataDirectory, Settings.FfmpegPath);
+
+    public Task<string> InstallFfmpegAsync(IProgress<(long Done, long Total)>? progress, CancellationToken ct)
+        => Ffmpeg.InstallAsync(DataDirectory, _http, progress, ct);
+
     // ------------------------------------------------------------------ operações
 
     public DownloadItem Add(DownloadRequest request)
@@ -112,7 +124,19 @@ public sealed class DownloadManager : IDisposable
             name = request.Probe?.FileName ?? FileNameHelper.FromUrl(url);
         name = FileNameHelper.Sanitize(name!);
 
-        var category = request.Category ?? CategoryDetector.Detect(name, request.Probe?.ContentType);
+        if (request.Kind != StreamKind.File)
+        {
+            // manifesto → arquivo de vídeo; a extensão final é decidida na montagem
+            var ext = Path.GetExtension(name);
+            if (ext.Equals(".m3u8", StringComparison.OrdinalIgnoreCase) || ext.Equals(".mpd", StringComparison.OrdinalIgnoreCase) ||
+                ext.Equals(".m3u", StringComparison.OrdinalIgnoreCase) || string.IsNullOrEmpty(ext))
+                name = Path.GetFileNameWithoutExtension(name) + ".mp4";
+            if (name.StartsWith("playlist", StringComparison.OrdinalIgnoreCase) || name.StartsWith("master", StringComparison.OrdinalIgnoreCase) ||
+                name.StartsWith("index", StringComparison.OrdinalIgnoreCase) || name.StartsWith("manifest", StringComparison.OrdinalIgnoreCase))
+                name = "video-" + DateTime.Now.ToString("yyyyMMdd-HHmmss") + ".mp4";
+        }
+
+        var category = request.Category ?? (request.Kind != StreamKind.File ? CategoryDetector.Video : CategoryDetector.Detect(name, request.Probe?.ContentType));
         if (Settings.OrganizeByCategory && string.IsNullOrWhiteSpace(request.Directory))
             dir = Path.Combine(dir, category);
 
@@ -127,16 +151,21 @@ public sealed class DownloadManager : IDisposable
             Url = url,
             FileName = name,
             Directory = dir,
-            MaxConnections = Math.Clamp(request.MaxConnections ?? Settings.ConnectionsPerDownload, 1, 64),
+            MaxConnections = request.Kind != StreamKind.File
+                ? Math.Clamp(request.MaxConnections ?? Settings.StreamConnections, 1, 16)
+                : Math.Clamp(request.MaxConnections ?? Settings.ConnectionsPerDownload, 1, 64),
             Referer = request.Referer,
             Headers = request.Headers != null ? new Dictionary<string, string>(request.Headers) : new(),
             ExpectedHash = string.IsNullOrWhiteSpace(request.ExpectedHash) ? null : request.ExpectedHash.Trim(),
             Category = category,
             TotalSize = request.Probe?.Size ?? -1,
-            SupportsResume = request.Probe?.SupportsResume ?? false,
+            SupportsResume = request.Kind != StreamKind.File || (request.Probe?.SupportsResume ?? false), // streams retomam por segmento
             ContentType = request.Probe?.ContentType,
             ETag = request.Probe?.ETag,
-            Status = request.StartImmediately ? DownloadStatus.Queued : DownloadStatus.Paused
+            Status = request.StartImmediately ? DownloadStatus.Queued : DownloadStatus.Paused,
+            Kind = request.Kind,
+            VariantId = request.VariantId,
+            VariantLabel = request.VariantLabel
         };
 
         lock (_lock) _items.Add(item);
@@ -170,7 +199,7 @@ public sealed class DownloadManager : IDisposable
         var item = Find(id);
         if (item == null) return;
 
-        DownloadTask? task;
+        IDownloadTask? task;
         bool changed = false;
         lock (_lock)
         {
@@ -196,7 +225,7 @@ public sealed class DownloadManager : IDisposable
         if (item == null) return;
 
         item.AutoRetryCount = int.MaxValue; // impede re-enfileiramento automático
-        DownloadTask? task;
+        IDownloadTask? task;
         lock (_lock) _tasks.TryGetValue(id, out task);
 
         if (task != null)
@@ -214,6 +243,7 @@ public sealed class DownloadManager : IDisposable
         try
         {
             if (File.Exists(item.TempPath)) File.Delete(item.TempPath);
+            if (Directory.Exists(item.FullPath + ".vxparts")) Directory.Delete(item.FullPath + ".vxparts", true);
             if (deleteFile && File.Exists(item.FullPath)) File.Delete(item.FullPath);
         }
         catch { }
@@ -229,7 +259,7 @@ public sealed class DownloadManager : IDisposable
         var item = Find(id);
         if (item == null) return;
 
-        DownloadTask? task;
+        IDownloadTask? task;
         lock (_lock) _tasks.TryGetValue(id, out task);
         if (task != null)
         {
@@ -250,7 +280,15 @@ public sealed class DownloadManager : IDisposable
             item.Status = DownloadStatus.Queued;
         }
 
-        try { if (File.Exists(item.TempPath)) File.Delete(item.TempPath); } catch { }
+        try
+        {
+            if (File.Exists(item.TempPath)) File.Delete(item.TempPath);
+            if (Directory.Exists(item.FullPath + ".vxparts")) Directory.Delete(item.FullPath + ".vxparts", true);
+        }
+        catch { }
+        item.StreamSegmentsDone = 0;
+        item.TotalIsEstimate = false;
+        item.Note = null;
 
         ItemStatusChanged?.Invoke(item);
         RequestSave();
@@ -313,7 +351,7 @@ public sealed class DownloadManager : IDisposable
     {
         if (_disposed) return;
 
-        var started = new List<DownloadTask>();
+        var started = new List<IDownloadTask>();
         lock (_lock)
         {
             int max = Math.Max(1, Settings.MaxConcurrentDownloads);
@@ -324,7 +362,9 @@ public sealed class DownloadManager : IDisposable
                 if (_tasks.Count >= max) break;
                 if (_tasks.ContainsKey(item.Id)) continue;
 
-                var task = new DownloadTask(item, _http, Settings, _limiter);
+                IDownloadTask task = item.IsStream
+                    ? new StreamDownloadTask(item, _http, Settings, _limiter, FfmpegPath)
+                    : new DownloadTask(item, _http, Settings, _limiter);
                 _tasks[item.Id] = task;
                 started.Add(task);
             }
@@ -337,7 +377,7 @@ public sealed class DownloadManager : IDisposable
         }
     }
 
-    private void OnTaskFinished(DownloadTask task)
+    private void OnTaskFinished(IDownloadTask task)
     {
         var item = task.Item;
         lock (_lock)
@@ -389,7 +429,7 @@ public sealed class DownloadManager : IDisposable
                 double dt = now - last;
                 last = now;
 
-                DownloadTask[] tasks;
+                IDownloadTask[] tasks;
                 lock (_lock) tasks = _tasks.Values.ToArray();
 
                 double total = 0;
@@ -439,7 +479,7 @@ public sealed class DownloadManager : IDisposable
         if (_disposed) return;
         _disposed = true;
 
-        List<DownloadTask> tasks;
+        List<IDownloadTask> tasks;
         lock (_lock) tasks = _tasks.Values.ToList();
 
         foreach (var t in tasks) t.Pause();

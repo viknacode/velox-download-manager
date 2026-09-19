@@ -29,6 +29,18 @@ public sealed class DownloadItem
     public string? ExpectedHash { get; set; }
     public string? ComputedHash { get; set; }
 
+    // ----- streams (HLS / DASH) -----
+    public StreamKind Kind { get; set; } = StreamKind.File;
+    /// <summary>Id da variante escolhida (HLS: URL da playlist de mídia; DASH: id da Representation de vídeo).</summary>
+    public string? VariantId { get; set; }
+    public string? VariantLabel { get; set; }
+    public int StreamSegmentsTotal { get; set; }
+    public int StreamSegmentsDone { get; set; }
+    /// <summary>true quando TotalSize é uma estimativa (streams: média dos segmentos × total).</summary>
+    public bool TotalIsEstimate { get; set; }
+    /// <summary>Observação sobre o resultado (ex.: salvo como .ts por falta de ffmpeg).</summary>
+    public string? Note { get; set; }
+
     // ----- estado de execução (não persistido) -----
 
     [JsonIgnore] public object SegmentsLock { get; } = new();
@@ -39,12 +51,18 @@ public sealed class DownloadItem
     [JsonIgnore] public string TempPath => FullPath + ".vxpart";
 
     [JsonIgnore]
-    public bool IsActive => Status is DownloadStatus.Connecting or DownloadStatus.Downloading or DownloadStatus.Verifying;
+    public bool IsActive => Status is DownloadStatus.Connecting or DownloadStatus.Downloading or DownloadStatus.Verifying or DownloadStatus.Merging;
+
+    [JsonIgnore] public bool IsStream => Kind != StreamKind.File;
+
+    /// <summary>Estado de cada segmento de mídia (0 pendente, 1 baixando, 2 concluído) — só em memória, para a barra.</summary>
+    [JsonIgnore] public byte[]? StreamStates { get; set; }
 
     [JsonIgnore]
-    public double Progress => TotalSize > 0
-        ? Math.Clamp((double)DownloadedBytes / TotalSize, 0, 1)
-        : (Status == DownloadStatus.Completed ? 1 : 0);
+    public double Progress => Status == DownloadStatus.Completed ? 1
+        : IsStream && StreamSegmentsTotal > 0 ? Math.Clamp((double)StreamSegmentsDone / StreamSegmentsTotal, 0, 1)
+        : TotalSize > 0 ? Math.Clamp((double)DownloadedBytes / TotalSize, 0, 1)
+        : 0;
 
     [JsonIgnore]
     public TimeSpan? Eta => Status == DownloadStatus.Downloading && TotalSize > 0 && Speed > 1
@@ -91,6 +109,7 @@ public sealed class DownloadItem
 
     public SegmentSnapshot[] SnapshotSegments()
     {
+        if (IsStream) return SnapshotStreamSegments();
         lock (SegmentsLock)
         {
             return Segments
@@ -98,6 +117,28 @@ public sealed class DownloadItem
                 .Select(s => new SegmentSnapshot(s.Start, s.End, s.Downloaded, s.IsActive))
                 .ToArray();
         }
+    }
+
+    /// <summary>Converte o mapa de segmentos de mídia em faixas proporcionais (runs de mesmo estado) sobre o tamanho estimado.</summary>
+    private SegmentSnapshot[] SnapshotStreamSegments()
+    {
+        var states = StreamStates;
+        long total = TotalSize;
+        if (states == null || states.Length == 0 || total <= 0) return Array.Empty<SegmentSnapshot>();
+
+        var list = new List<SegmentSnapshot>();
+        int n = states.Length;
+        int runStart = 0;
+        for (int i = 1; i <= n; i++)
+        {
+            if (i < n && states[i] == states[runStart]) continue;
+            long start = (long)((double)total * runStart / n);
+            long end = (i == n ? total : (long)((double)total * i / n)) - 1;
+            byte st = states[runStart];
+            list.Add(new SegmentSnapshot(start, end, st == 2 ? end - start + 1 : 0, st == 1));
+            runStart = i;
+        }
+        return list.ToArray();
     }
 
     public DownloadItem CloneForPersistence()
@@ -132,7 +173,14 @@ public sealed class DownloadItem
                 Referer = Referer,
                 Headers = new Dictionary<string, string>(Headers),
                 ExpectedHash = ExpectedHash,
-                ComputedHash = ComputedHash
+                ComputedHash = ComputedHash,
+                Kind = Kind,
+                VariantId = VariantId,
+                VariantLabel = VariantLabel,
+                StreamSegmentsTotal = StreamSegmentsTotal,
+                StreamSegmentsDone = StreamSegmentsDone,
+                TotalIsEstimate = TotalIsEstimate,
+                Note = Note
             };
         }
     }

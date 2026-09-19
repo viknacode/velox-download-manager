@@ -1,6 +1,7 @@
 using System.Windows.Input;
 using Microsoft.Win32;
 using Velox.Core.Models;
+using Velox.Core.Streams;
 using Velox.Core.Utils;
 
 namespace Velox.App.ViewModels;
@@ -42,6 +43,8 @@ public sealed class SettingsViewModel : ObservableObject
         _startImmediately = s.StartDownloadsImmediately;
         _browserAsk = s.BrowserAskBeforeDownload;
         _autoResolve = s.AutoResolveShortLinks;
+        _streamConnections = s.StreamConnections;
+        _ffmpegPath = s.FfmpegPath ?? "";
 
         InstallIntegrationCommand = new RelayCommand(InstallIntegration);
         OpenExtensionFolderCommand = new RelayCommand(Services.BrowserIntegration.OpenExtensionFolder);
@@ -53,6 +56,84 @@ public sealed class SettingsViewModel : ObservableObject
         CancelCommand = new RelayCommand(() => RequestClose?.Invoke(false));
         BrowseCommand = new RelayCommand(Browse);
         ResetUserAgentCommand = new RelayCommand(() => UserAgent = new AppSettings().UserAgent);
+        InstallFfmpegCommand = new AsyncRelayCommand(InstallFfmpegAsync, () => !_ffmpegInstalling);
+        BrowseFfmpegCommand = new RelayCommand(BrowseFfmpeg);
+        RefreshFfmpegStatus();
+    }
+
+    // ------------------------------------------------------------ streams (HLS/DASH)
+    public ICommand InstallFfmpegCommand { get; }
+    public ICommand BrowseFfmpegCommand { get; }
+
+    private double _streamConnections;
+    public double StreamConnections
+    {
+        get => _streamConnections;
+        set { if (Set(ref _streamConnections, Math.Round(value))) OnPropertyChanged(nameof(StreamConnectionsText)); }
+    }
+    public string StreamConnectionsText => $"{(int)_streamConnections} segmentos em paralelo";
+
+    private string _ffmpegPath;
+    /// <summary>Caminho manual do ffmpeg.exe (vazio = automático: pasta de ferramentas do Velox, PATH ou locais comuns).</summary>
+    public string FfmpegPath
+    {
+        get => _ffmpegPath;
+        set { if (Set(ref _ffmpegPath, value)) RefreshFfmpegStatus(); }
+    }
+
+    private bool _ffmpegFound;
+    public bool FfmpegFound { get => _ffmpegFound; private set => Set(ref _ffmpegFound, value); }
+
+    private string _ffmpegStatus = "";
+    public string FfmpegStatus { get => _ffmpegStatus; private set => Set(ref _ffmpegStatus, value); }
+
+    private bool _ffmpegInstalling;
+    private string _ffmpegProgress = "";
+    public string FfmpegProgress { get => _ffmpegProgress; private set => Set(ref _ffmpegProgress, value); }
+
+    private void RefreshFfmpegStatus()
+    {
+        var path = Ffmpeg.Locate(_main.DataDirectory, string.IsNullOrWhiteSpace(_ffmpegPath) ? null : _ffmpegPath.Trim());
+        FfmpegFound = path != null;
+        FfmpegStatus = path == null
+            ? (string.IsNullOrWhiteSpace(_ffmpegPath) ? "ffmpeg não encontrado — streams serão salvos como .ts" : "Arquivo não encontrado no caminho informado")
+            : "ffmpeg: " + path;
+    }
+
+    private async Task InstallFfmpegAsync()
+    {
+        _ffmpegInstalling = true;
+        try
+        {
+            FfmpegProgress = "Baixando…";
+            var progress = new Progress<(long Done, long Total)>(p =>
+                FfmpegProgress = p.Total > 0
+                    ? $"Baixando… {FormatHelper.Bytes(p.Done)} de {FormatHelper.Bytes(p.Total)} ({p.Done * 100 / p.Total}%)"
+                    : $"Baixando… {FormatHelper.Bytes(p.Done)}");
+            await _main.InstallFfmpegAsync(progress, CancellationToken.None);
+            FfmpegProgress = "";
+            FfmpegPath = "";
+        }
+        catch (Exception ex)
+        {
+            FfmpegProgress = "Falha: " + ex.Message;
+        }
+        finally
+        {
+            _ffmpegInstalling = false;
+            RefreshFfmpegStatus();
+        }
+    }
+
+    private void BrowseFfmpeg()
+    {
+        var dlg = new OpenFileDialog
+        {
+            Title = "Escolher ffmpeg.exe",
+            Filter = "ffmpeg|ffmpeg.exe|Executáveis|*.exe",
+            CheckFileExists = true
+        };
+        if (dlg.ShowDialog() == true) FfmpegPath = dlg.FileName;
     }
 
     public ICommand SaveCommand { get; }
@@ -237,6 +318,8 @@ public sealed class SettingsViewModel : ObservableObject
         s.StartDownloadsImmediately = _startImmediately;
         s.BrowserAskBeforeDownload = _browserAsk;
         s.AutoResolveShortLinks = _autoResolve;
+        s.StreamConnections = (int)Math.Clamp(_streamConnections, 1, 16);
+        s.FfmpegPath = string.IsNullOrWhiteSpace(_ffmpegPath) ? null : _ffmpegPath.Trim();
 
         ApplyStartup(s.StartWithWindows);
         _main.ApplySettings(s);

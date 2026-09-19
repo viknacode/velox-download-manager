@@ -68,6 +68,7 @@
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto" />
                         <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
                     </Grid.RowDefinitions>
 
                     <!-- ===== coluna esquerda ===== -->
@@ -256,6 +257,74 @@
                                         <Button Command="{Binding OpenChromeExtensionsCommand}" Content="chrome://extensions" Padding="10,6" Margin="0,0,6,6" FontSize="12" />
                                         <Button Command="{Binding OpenEdgeExtensionsCommand}" Content="edge://extensions" Padding="10,6" Margin="0,0,6,6" FontSize="12" />
                                     </WrapPanel>
+                                </StackPanel>
+                            </Grid>
+                        </StackPanel>
+                    </Border>
+                    <!-- ===== streams HLS/DASH ===== -->
+                    <Border Grid.Row="2" Grid.ColumnSpan="3" Margin="0,6,0,6" Background="{StaticResource Surface2Brush}"
+                            BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="12" Padding="16,14">
+                        <StackPanel>
+                            <Grid Margin="0,0,0,10">
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock Style="{StaticResource Icon}" Text="&#xE93E;" FontSize="14" Foreground="{StaticResource Accent2Brush}" Margin="0,0,8,0" />
+                                    <TextBlock Text="VÍDEOS EM STREAM — HLS / DASH" Style="{StaticResource Section}" Margin="0" VerticalAlignment="Center" />
+                                </StackPanel>
+                                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                                    <Border Width="8" Height="8" CornerRadius="4" VerticalAlignment="Center" Margin="0,0,6,0">
+                                        <Border.Style>
+                                            <Style TargetType="Border">
+                                                <Setter Property="Background" Value="{StaticResource WarningBrush}" />
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding FfmpegFound}" Value="True">
+                                                        <Setter Property="Background" Value="{StaticResource SuccessBrush}" />
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </Border.Style>
+                                    </Border>
+                                    <TextBlock Text="{Binding FfmpegStatus}" Style="{StaticResource Muted}" FontSize="11.5" VerticalAlignment="Center" MaxWidth="420" TextTrimming="CharacterEllipsis" ToolTip="{Binding FfmpegStatus}" />
+                                </StackPanel>
+                            </Grid>
+
+                            <TextBlock Style="{StaticResource Hint}" Margin="0,0,0,10"
+                                       Text="Vídeos servidos em pedaços (playlists .m3u8 e manifestos .mpd, inclusive com AES-128) são baixados com vários segmentos em paralelo e retomáveis. O ffmpeg junta os pedaços em um MP4 sem recodificar; sem ele o resultado fica em .ts ou em vídeo e áudio separados." />
+
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="16" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <StackPanel Grid.Column="0">
+                                    <TextBlock Text="ffmpeg" Style="{StaticResource FieldLabel}" />
+                                    <WrapPanel>
+                                        <Button Command="{Binding InstallFfmpegCommand}" Padding="12,7" Margin="0,0,6,6">
+                                            <StackPanel Orientation="Horizontal">
+                                                <TextBlock Style="{StaticResource Icon}" Text="&#xE896;" FontSize="12" Margin="0,0,8,0" />
+                                                <TextBlock Text="Baixar e instalar ffmpeg" FontSize="12" />
+                                            </StackPanel>
+                                        </Button>
+                                        <Button Command="{Binding BrowseFfmpegCommand}" Padding="12,7" Margin="0,0,6,6">
+                                            <StackPanel Orientation="Horizontal">
+                                                <TextBlock Style="{StaticResource Icon}" Text="&#xE8E5;" FontSize="12" Margin="0,0,8,0" />
+                                                <TextBlock Text="Escolher ffmpeg.exe…" FontSize="12" />
+                                            </StackPanel>
+                                        </Button>
+                                    </WrapPanel>
+                                    <TextBlock Text="{Binding FfmpegProgress}" Style="{StaticResource Muted}" Foreground="{StaticResource Accent2Brush}" FontSize="11.5"
+                                               Visibility="{Binding FfmpegProgress, Converter={StaticResource CountToVis}}" Margin="0,0,0,6" />
+                                    <TextBox Text="{Binding FfmpegPath, UpdateSourceTrigger=PropertyChanged}" Tag="caminho manual (opcional) — vazio = detectar automaticamente" FontSize="11.5" Padding="10,7" />
+                                    <TextBlock Style="{StaticResource Hint}" Text="A instalação baixa a build oficial 'essentials' (gyan.dev, ~100 MB) e guarda só o ffmpeg.exe na pasta do Velox." />
+                                </StackPanel>
+                                <StackPanel Grid.Column="2">
+                                    <Grid>
+                                        <TextBlock Text="Conexões por stream" Style="{StaticResource FieldLabel}" />
+                                        <TextBlock Text="{Binding StreamConnectionsText}" Style="{StaticResource Muted}" FontWeight="SemiBold"
+                                                   Foreground="{StaticResource Accent2Brush}" HorizontalAlignment="Right" />
+                                    </Grid>
+                                    <Slider Minimum="1" Maximum="16" Value="{Binding StreamConnections}" IsSnapToTickEnabled="True" TickFrequency="1" />
+                                    <TextBlock Style="{StaticResource Hint}" Text="Quantos segmentos de mídia são baixados ao mesmo tempo. 8 é um bom equilíbrio; CDNs agressivas podem responder 429 com valores altos." />
                                 </StackPanel>
                             </Grid>
                         </StackPanel>

@@ -125,7 +125,7 @@ public sealed class SegmentBar : FrameworkElement
             dc.DrawRectangle(brush, null, new Rect(x1, 0, x2 - x1, h));
         }
 
-        if (ShowDividers && h >= 6 && !allDone)
+        if (ShowDividers && h >= 6 && !allDone && segs.Count <= 64)
         {
             foreach (var s in segs)
             {

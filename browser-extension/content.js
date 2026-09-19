@@ -179,10 +179,19 @@
       const known = sniffed.find(x => x.url === d.url || x.url === d.url.split('#')[0]);
       if (known) { if (!d.type) d.type = known.type; if (known.size > 0) d.size = known.size; }
     }
+    for (const d of direct) if (!d.kind) d.kind = manifestKindOf(d);
     const all = [...direct, ...sniffed.filter(x => !direct.some(d => d.url === x.url))];
-    return all
-      .filter(m => !/\.(m3u8|mpd)(?:$|[?#])/i.test(m.url)) // streams segmentados ficam de fora por enquanto
-      .sort((a, b) => (b.size > 0 ? 1 : 0) - (a.size > 0 ? 1 : 0));
+    // arquivos com tamanho conhecido primeiro, depois streams (HLS/DASH), depois o resto
+    const rank = m => (m.size > 0 ? 0 : m.kind ? 1 : 2);
+    return all.sort((a, b) => rank(a) - rank(b));
+  }
+
+  function manifestKindOf(m) {
+    const t = (m.type || '').toLowerCase();
+    if (/mpegurl/.test(t)) return 'hls';
+    if (/dash\+xml/.test(t)) return 'dash';
+    const e = extOf(m.url);
+    return e === 'mpd' ? 'dash' : (e === 'm3u8' || e === 'm3u') ? 'hls' : '';
   }
 
   function fmtSize(n) {
@@ -199,6 +208,8 @@
   }
 
   function kindOf(m) {
+    if (m.kind === 'hls') return 'HLS';
+    if (m.kind === 'dash') return 'DASH';
     const t = (m.type || '').split(';')[0].trim();
     if (t) return t.replace('video/', '').replace('audio/', '').toUpperCase().slice(0, 6) || 'MÍDIA';
     return (extOf(m.url) || 'MÍDIA').toUpperCase();
@@ -220,7 +231,7 @@
     if (media.length === 0) {
       label.textContent = 'Nenhuma mídia direta';
       pill.classList.add('err');
-      showPanel(`<div class="empty">Este player usa um stream segmentado (HLS/DASH) ou protegido, sem arquivo direto para baixar.<br>Dica: reproduza alguns segundos e tente de novo, ou use o botão direito → "Baixar mídia com Velox".</div>`);
+      showPanel(`<div class="empty">Nenhum arquivo nem stream (HLS/DASH) foi visto neste player ainda.<br>Dica: reproduza alguns segundos e tente de novo, ou use o botão direito → "Baixar mídia com Velox".</div>`);
       setTimeout(() => { pill.classList.remove('err'); label.textContent = 'Baixar com Velox'; }, 2500);
       return;
     }
@@ -234,7 +245,7 @@
     panel.innerHTML = '<h4>ESCOLHA O ARQUIVO' + (meta ? ' · ' + meta : '') + '</h4>' + media.map((m, i) => `
       <div class="item" data-i="${i}">
         <span class="kind">${kindOf(m)}</span>
-        <div><b>${fmtSize(m.size) || 'tamanho desconhecido'}</b><small>${m.url.replace(/^https?:\/\//, '')}</small></div>
+        <div><b>${m.kind ? 'Stream segmentado · escolha a qualidade no Velox' : (fmtSize(m.size) || 'tamanho desconhecido')}</b><small>${m.url.replace(/^https?:\/\//, '')}</small></div>
       </div>`).join('');
     panel.querySelectorAll('.item').forEach(el => el.addEventListener('click', () => { send(media[+el.dataset.i]); }));
     showPanel();

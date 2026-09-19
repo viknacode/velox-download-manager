@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "Velox Download Manager",
   "short_name": "Velox",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "Envia os downloads do navegador para o Velox Download Manager e adiciona um botão \"Baixar com Velox\" sobre os vídeos.",
   "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAwSKnhzM36SPBx4hRsloHct7zfSgD/Y7hVMjjFHPvDAzYMDpBBh2Q2VLgICpPTP98aHzfgHb/exk9toXSlvZDWadFqudWFj6WfOEJ0t0cvzk/q7eSBcdRYtQQoGFYvreAdL/vLGrt8qNKqSwVtfmRtF3odnAjf6xoEpqyjhzl9bnXegT5xV4Zcs0WoMGwfQ1YrzWecqlJmUykWO4qsUM3JYUyDFdVWHjzq4B0GAbeXgeIjnZkB+p0mHt8Ql4Wnlr5ZOQJP0HzqDnAEcf58yAERi+mdn4OifT2CeIvqJslxfGwsjDerSHat9hd0bsE2bujFGKc4clYLOGzRrDt2kboiQIDAQAB",
   "icons": {

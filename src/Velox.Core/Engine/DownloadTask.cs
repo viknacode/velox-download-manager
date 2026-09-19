@@ -15,7 +15,7 @@ namespace Velox.Core.Engine;
 /// termina ela "rouba" metade do maior segmento restante), tenta novamente em falhas
 /// com backoff exponencial e persiste o progresso para retomada.
 /// </summary>
-internal sealed class DownloadTask
+internal sealed class DownloadTask : IDownloadTask
 {
     private const int BufferSize = 128 * 1024;
 

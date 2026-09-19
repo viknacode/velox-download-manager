@@ -172,6 +172,68 @@
                     </Grid>
                 </Border>
 
+                <!-- stream HLS/DASH: qualidades + ffmpeg -->
+                <Border Margin="0,10,0,0" CornerRadius="10" Padding="14,12" BorderThickness="1"
+                        Background="{StaticResource AccentSoftBrush}" BorderBrush="{StaticResource AccentBrush}"
+                        Visibility="{Binding IsStream, Converter={StaticResource BoolToVis}}">
+                    <StackPanel>
+                        <Grid>
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Style="{StaticResource Icon}" Text="&#xE93E;" FontSize="15" Foreground="{StaticResource AccentBrush}"
+                                           VerticalAlignment="Center" Margin="0,0,10,0" />
+                                <TextBlock Text="{Binding StreamTitle}" FontWeight="SemiBold" FontSize="12.5" VerticalAlignment="Center" />
+                            </StackPanel>
+                            <TextBlock Text="{Binding StreamSummary}" Style="{StaticResource Muted}" HorizontalAlignment="Right"
+                                       VerticalAlignment="Center" />
+                        </Grid>
+
+                        <StackPanel Visibility="{Binding HasManyVariants, Converter={StaticResource BoolToVis}}">
+                            <TextBlock Text="Qualidade" Style="{StaticResource FieldLabel}" Margin="2,12,0,6" />
+                            <ItemsControl ItemsSource="{Binding Variants}">
+                                <ItemsControl.ItemsPanel>
+                                    <ItemsPanelTemplate>
+                                        <WrapPanel />
+                                    </ItemsPanelTemplate>
+                                </ItemsControl.ItemsPanel>
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <RadioButton Style="{StaticResource Chip}" GroupName="Quality" IsChecked="{Binding IsSelected, Mode=TwoWay}"
+                                                     ToolTip="{Binding Detail}">
+                                            <StackPanel>
+                                                <TextBlock Text="{Binding Label}" FontWeight="SemiBold" />
+                                                <TextBlock Text="{Binding Detail}" FontSize="10.5" Opacity="0.7" Margin="0,1,0,0"
+                                                           Visibility="{Binding HasDetail, Converter={StaticResource BoolToVis}}" />
+                                            </StackPanel>
+                                        </RadioButton>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </StackPanel>
+
+                        <Grid Margin="0,10,0,0">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Style="{StaticResource Icon}" Text="&#xE946;" FontSize="13" Foreground="{StaticResource MutedBrush}"
+                                       VerticalAlignment="Top" Margin="0,2,9,0" />
+                            <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                <TextBlock Text="{Binding FfmpegNote}" Style="{StaticResource Muted}" TextWrapping="Wrap" />
+                                <TextBlock Text="{Binding FfmpegProgress}" Style="{StaticResource Muted}" Foreground="{StaticResource Accent2Brush}"
+                                           Margin="0,3,0,0" Visibility="{Binding FfmpegProgress, Converter={StaticResource CountToVis}}" />
+                            </StackPanel>
+                            <Button Grid.Column="2" Command="{Binding InstallFfmpegCommand}" Margin="12,0,0,0" Padding="12,6" VerticalAlignment="Center"
+                                    Visibility="{Binding HasFfmpeg, Converter={StaticResource InvBoolToVis}}" ToolTip="Baixa o ffmpeg (~100 MB) para a pasta do Velox">
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock Style="{StaticResource Icon}" Text="&#xE896;" FontSize="12" Margin="0,0,7,0" />
+                                    <TextBlock Text="Instalar ffmpeg" />
+                                </StackPanel>
+                            </Button>
+                        </Grid>
+                    </StackPanel>
+                </Border>
+
                 <!-- nome do arquivo -->
                 <StackPanel Margin="0,14,0,0" Visibility="{Binding IsSingle, Converter={StaticResource BoolToVis}}">
                     <TextBlock Text="Salvar como" Style="{StaticResource FieldLabel}" />
@@ -230,7 +292,7 @@
                             <TextBlock Text="{Binding ConnectionsText}" Style="{StaticResource Muted}" FontWeight="SemiBold"
                                        Foreground="{StaticResource Accent2Brush}" HorizontalAlignment="Right" />
                         </Grid>
-                        <Slider Minimum="1" Maximum="32" Value="{Binding Connections}" TickFrequency="1" IsSnapToTickEnabled="True" />
+                        <Slider Minimum="1" Maximum="{Binding ConnectionsMax}" Value="{Binding Connections}" TickFrequency="1" IsSnapToTickEnabled="True" />
                     </StackPanel>
                     <CheckBox Grid.Column="1" Style="{StaticResource ToggleSwitch}" IsChecked="{Binding StartImmediately}"
                               Content="Iniciar agora" Margin="24,14,0,0" VerticalAlignment="Center" FontSize="12.5" />

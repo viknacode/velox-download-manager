@@ -353,6 +353,30 @@ public sealed class MainViewModel : ObservableObject
     public Task<ProbeResult> ProbeAsync(string url, IDictionary<string, string>? headers, string? referer, CancellationToken ct)
         => _manager.ProbeAsync(url, headers, referer, ct);
 
+    /// <summary>Lê um manifesto HLS/DASH e lista as qualidades; null quando a URL não é um stream.</summary>
+    public Task<Velox.Core.Streams.StreamInfo?> ProbeStreamAsync(string url, IDictionary<string, string>? headers, string? referer,
+        string? knownContentType, CancellationToken ct)
+        => _manager.ProbeStreamAsync(url, headers, referer, knownContentType, ct);
+
+    public string? FfmpegPath => _manager.FfmpegPath;
+
+    private Task<string>? _ffmpegInstall;
+
+    /// <summary>Baixa o ffmpeg para a pasta de ferramentas (uma instalação por vez; chamadas simultâneas compartilham o progresso).</summary>
+    public Task<string> InstallFfmpegAsync(IProgress<(long Done, long Total)>? progress, CancellationToken ct)
+    {
+        lock (this)
+        {
+            if (_ffmpegInstall is { IsCompleted: false }) return _ffmpegInstall;
+            _ffmpegInstall = _manager.InstallFfmpegAsync(progress, ct);
+            _ffmpegInstall.ContinueWith(t =>
+            {
+                if (t.IsCompletedSuccessfully) OnUi(() => Toast("ffmpeg instalado", "Streams HLS/DASH agora são salvos como MP4.", "success"));
+            }, TaskScheduler.Default);
+            return _ffmpegInstall;
+        }
+    }
+
     /// <summary>Decifra encurtadores/safelinks até a URL de destino (ver Velox.Core.Resolvers).</summary>
     public Task<ResolveResult> ResolveLinkAsync(string url, Action<string>? log, CancellationToken ct)
         => _resolver.ResolveAsync(url, log, ct);
@@ -367,13 +391,19 @@ public sealed class MainViewModel : ObservableObject
         if (!string.IsNullOrWhiteSpace(msg.UserAgent)) headers["User-Agent"] = msg.UserAgent.Trim();
 
         var fileName = string.IsNullOrWhiteSpace(msg.FileName) ? null : FileNameHelper.Sanitize(msg.FileName);
+        var url = msg.Url!.Trim();
+        var kind = GuessStreamKind(url, msg.Mime);
+        if (kind != StreamKind.File && fileName != null)
+            fileName = System.IO.Path.ChangeExtension(fileName, ".mp4");
+
         var request = new DownloadRequest
         {
-            Url = msg.Url!.Trim(),
+            Url = url,
             FileName = fileName,
             Referer = string.IsNullOrWhiteSpace(msg.Referrer) ? null : msg.Referrer.Trim(),
             Headers = headers.Count > 0 ? headers : null,
-            StartImmediately = Settings.StartDownloadsImmediately
+            StartImmediately = Settings.StartDownloadsImmediately,
+            Kind = kind
         };
 
         var source = msg.Source switch
@@ -393,6 +423,21 @@ public sealed class MainViewModel : ObservableObject
             AddDownloads(new[] { request });
             _ui.TrayNotify(source, fileName ?? request.Url);
         }
+    }
+
+    /// <summary>Reconhece manifesto HLS/DASH pela extensão ou pelo content-type informado pelo navegador.</summary>
+    public static StreamKind GuessStreamKind(string url, string? mime)
+    {
+        var m = mime?.ToLowerInvariant() ?? "";
+        if (m.Contains("mpegurl")) return StreamKind.Hls;
+        if (m.Contains("dash+xml")) return StreamKind.Dash;
+        if (Uri.TryCreate(url, UriKind.Absolute, out var u))
+        {
+            var p = u.AbsolutePath;
+            if (p.EndsWith(".m3u8", StringComparison.OrdinalIgnoreCase) || p.EndsWith(".m3u", StringComparison.OrdinalIgnoreCase)) return StreamKind.Hls;
+            if (p.EndsWith(".mpd", StringComparison.OrdinalIgnoreCase)) return StreamKind.Dash;
+        }
+        return StreamKind.File;
     }
 
     public void ApplySettings(AppSettings s)

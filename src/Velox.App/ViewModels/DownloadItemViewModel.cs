@@ -150,6 +150,13 @@ public sealed class DownloadItemViewModel : ObservableObject
     private string _createdText = "";
     public string CreatedText { get => _createdText; private set => Set(ref _createdText, value); }
 
+    private bool _isStream;
+    public bool IsStream { get => _isStream; private set => Set(ref _isStream, value); }
+
+    /// <summary>Qualidade escolhida do stream (ex.: "1080p · 6,2 Mbps"), vazio para arquivos comuns.</summary>
+    private string _variantLabel = "";
+    public string VariantLabel { get => _variantLabel; private set => Set(ref _variantLabel, value); }
+
     // ------------------------------------------------------------ refresh
     public void Refresh(bool full)
     {
@@ -166,8 +173,8 @@ public sealed class DownloadItemViewModel : ObservableObject
         IsActive = m.IsActive;
         IsCompleted = m.Status == DownloadStatus.Completed;
         IsFailed = m.Status == DownloadStatus.Failed;
-        IsIndeterminate = m.Status == DownloadStatus.Connecting || m.Status == DownloadStatus.Verifying ||
-                          (m.Status == DownloadStatus.Downloading && m.TotalSize <= 0);
+        IsIndeterminate = m.Status == DownloadStatus.Connecting || m.Status == DownloadStatus.Verifying || m.Status == DownloadStatus.Merging ||
+                          (m.Status == DownloadStatus.Downloading && m.TotalSize <= 0 && !(m.IsStream && m.StreamSegmentsTotal > 0));
 
         (StatusText, StatusKind) = m.Status switch
         {
@@ -179,14 +186,20 @@ public sealed class DownloadItemViewModel : ObservableObject
             DownloadStatus.Completed => ("Concluído", "done"),
             DownloadStatus.Failed => ("Falhou", "error"),
             DownloadStatus.Verifying => ("Verificando", "active"),
+            DownloadStatus.Merging => ("Juntando", "active"),
             _ => (m.Status.ToString(), "queued")
         };
 
-        PercentText = m.TotalSize > 0 || IsCompleted ? FormatHelper.Percent(m.Progress) : "";
+        IsStream = m.IsStream;
+        VariantLabel = m.IsStream ? (m.VariantLabel ?? (m.Kind == StreamKind.Dash ? "DASH" : "HLS")) : "";
+        string approx = m.TotalIsEstimate ? "≈" : "";
+        PercentText = m.TotalSize > 0 || IsCompleted || (m.IsStream && m.StreamSegmentsTotal > 0) ? FormatHelper.Percent(m.Progress) : "";
         ProgressText = m.Status == DownloadStatus.Completed
             ? FormatHelper.Bytes(m.TotalSize > 0 ? m.TotalSize : m.DownloadedBytes)
+            : m.IsStream && m.StreamSegmentsTotal > 0
+                ? $"{m.StreamSegmentsDone} de {m.StreamSegmentsTotal} segmentos  ·  {FormatHelper.Bytes(m.DownloadedBytes)}"
             : m.TotalSize > 0
-                ? $"{FormatHelper.Bytes(m.DownloadedBytes)} de {FormatHelper.Bytes(m.TotalSize)}"
+                ? $"{FormatHelper.Bytes(m.DownloadedBytes)} de {approx}{FormatHelper.Bytes(m.TotalSize)}"
                 : FormatHelper.Bytes(m.DownloadedBytes);
 
         SpeedText = m.IsActive && m.Status == DownloadStatus.Downloading ? FormatHelper.Speed(m.Speed) : "";
@@ -201,6 +214,8 @@ public sealed class DownloadItemViewModel : ObservableObject
 
         DetailText = m.Status switch
         {
+            DownloadStatus.Merging => m.IsStream && m.Kind == StreamKind.Dash ? "juntando vídeo e áudio…" : "montando o arquivo…",
+            DownloadStatus.Completed when m.IsStream && !string.IsNullOrEmpty(m.Note) => m.Note,
             DownloadStatus.Downloading when m.ActiveConnections > 0 =>
                 $"{m.ActiveConnections} {(m.ActiveConnections == 1 ? "conexão" : "conexões")}",
             DownloadStatus.Downloading when m.RetryingConnections > 0 => "aguardando servidor…",
@@ -212,7 +227,7 @@ public sealed class DownloadItemViewModel : ObservableObject
             _ => ""
         };
 
-        CanToggle = m.Status != DownloadStatus.Completed && m.Status != DownloadStatus.Verifying;
+        CanToggle = m.Status != DownloadStatus.Completed && m.Status != DownloadStatus.Verifying && m.Status != DownloadStatus.Merging;
         if (m.IsActive || m.Status == DownloadStatus.Queued)
         {
             ToggleGlyph = "";
@@ -236,7 +251,7 @@ public sealed class DownloadItemViewModel : ObservableObject
 
         if (full)
         {
-            SizeText = FormatHelper.Bytes(m.TotalSize);
+            SizeText = (m.TotalIsEstimate && !IsCompleted ? "≈ " : "") + FormatHelper.Bytes(m.TotalSize);
             DownloadedText = FormatHelper.Bytes(m.DownloadedBytes);
             AverageSpeedText = m.AverageSpeed > 0 ? FormatHelper.Speed(m.AverageSpeed) : "—";
             ConnectionsText = m.IsActive ? $"{m.ActiveConnections} / {m.MaxConnections}" : $"até {m.MaxConnections}";
@@ -245,7 +260,9 @@ public sealed class DownloadItemViewModel : ObservableObject
             RetriesText = m.RetryCount.ToString();
             HashText = !string.IsNullOrEmpty(m.ComputedHash) ? m.ComputedHash : "";
             ErrorText = m.Status == DownloadStatus.Failed ? m.ErrorMessage : null;
-            SegmentsText = $"{Segments.Count(s => s.IsCompleted)} / {Segments.Length} segmentos";
+            SegmentsText = m.IsStream
+                ? $"{m.StreamSegmentsDone} / {m.StreamSegmentsTotal} segmentos de mídia"
+                : $"{Segments.Count(s => s.IsCompleted)} / {Segments.Length} segmentos";
             CreatedText = m.CreatedAt.ToString("dd/MM HH:mm");
             RemainingText = m.Status == DownloadStatus.Downloading ? FormatHelper.Eta(m.Eta) : (m.Status == DownloadStatus.Completed ? "concluído" : "—");
             SpeedHistory = m.GetSpeedHistory();

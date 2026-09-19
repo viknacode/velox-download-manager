@@ -117,6 +117,16 @@
                         <Border Style="{StaticResource StatusPill}">
                             <TextBlock Style="{StaticResource StatusPillText}" Text="{Binding StatusText}" />
                         </Border>
+                        <Border CornerRadius="6" Padding="7,2" Margin="8,0,0,0" VerticalAlignment="Center"
+                                Background="{StaticResource Accent2SoftBrush}"
+                                Visibility="{Binding IsStream, Converter={StaticResource BoolToVis}}">
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Style="{StaticResource Icon}" Text="&#xE93E;" FontSize="10" Foreground="{StaticResource Accent2Brush}"
+                                           VerticalAlignment="Center" Margin="0,0,5,0" />
+                                <TextBlock Text="{Binding VariantLabel}" FontSize="10.5" FontWeight="SemiBold"
+                                           Foreground="{StaticResource Accent2Brush}" VerticalAlignment="Center" />
+                            </StackPanel>
+                        </Border>
                         <TextBlock Text="{Binding ProgressText}" Style="{StaticResource Muted}" Margin="10,0,0,0"
                                    VerticalAlignment="Center" />
                         <TextBlock Text="•" Style="{StaticResource Muted}" Margin="8,0" VerticalAlignment="Center"
@@ -376,6 +386,16 @@
                                         <Border Style="{StaticResource StatusPill}" Margin="12,0,0,0">
                                             <TextBlock Style="{StaticResource StatusPillText}" Text="{Binding StatusText}" />
                                         </Border>
+                                        <Border CornerRadius="6" Padding="7,2" Margin="10,0,0,0" VerticalAlignment="Center"
+                                Background="{StaticResource Accent2SoftBrush}"
+                                Visibility="{Binding IsStream, Converter={StaticResource BoolToVis}}">
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Style="{StaticResource Icon}" Text="&#xE93E;" FontSize="10" Foreground="{StaticResource Accent2Brush}"
+                                           VerticalAlignment="Center" Margin="0,0,5,0" />
+                                <TextBlock Text="{Binding VariantLabel}" FontSize="10.5" FontWeight="SemiBold"
+                                           Foreground="{StaticResource Accent2Brush}" VerticalAlignment="Center" />
+                            </StackPanel>
+                        </Border>
                                         <TextBlock Text="{Binding Category}" Foreground="{StaticResource MutedBrush}" FontSize="12"
                                                    Margin="12,0,0,0" VerticalAlignment="Center" />
                                     </StackPanel>

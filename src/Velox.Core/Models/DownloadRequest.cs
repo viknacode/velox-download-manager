@@ -12,6 +12,10 @@ public sealed class DownloadRequest
     public string? Category { get; init; }
     public bool StartImmediately { get; init; } = true;
     public ProbeResult? Probe { get; init; }
+    /// <summary>Stream HLS/DASH: variante escolhida (null = melhor qualidade).</summary>
+    public StreamKind Kind { get; init; } = StreamKind.File;
+    public string? VariantId { get; init; }
+    public string? VariantLabel { get; init; }
 }
 
 public sealed class ProbeResult
