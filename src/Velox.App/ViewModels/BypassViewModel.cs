@@ -1,5 +1,7 @@
 using System.Collections.ObjectModel;
 using System.Diagnostics;
+using System.IO;
+using System.Text.Json;
 using System.Windows;
 using System.Windows.Input;
 using Velox.Core.Models;
@@ -14,43 +16,76 @@ public sealed class BypassStepItem
     public string Resolver { get; init; } = "";
     public string Description { get; init; } = "";
     public string Url { get; init; } = "";
-    public string Host { get; init; } = "";
     public string ElapsedText { get; init; } = "";
 }
 
-/// <summary>Decifra links encurtados / safelinks até a URL de destino, mostrando cada passo.</summary>
+/// <summary>Entrada do histórico de links decifrados (persistido em bypass-history.json).</summary>
+public sealed class BypassHistoryItem : ObservableObject
+{
+    public string OriginalUrl { get; set; } = "";
+    public string FinalUrl { get; set; } = "";
+    public string Chain { get; set; } = "";
+    public int StepCount { get; set; }
+    public bool IsDirectFile { get; set; }
+    public string? FileName { get; set; }
+    public DateTime When { get; set; } = DateTime.Now;
+
+    [System.Text.Json.Serialization.JsonIgnore] public string WhenText => When.ToString("dd/MM HH:mm");
+    [System.Text.Json.Serialization.JsonIgnore] public string OriginalHost => HostOf(OriginalUrl);
+    [System.Text.Json.Serialization.JsonIgnore] public string FinalHost => HostOf(FinalUrl);
+    [System.Text.Json.Serialization.JsonIgnore] public string KindText => IsDirectFile ? (FileName ?? "arquivo direto") : "página";
+
+    [System.Text.Json.Serialization.JsonIgnore] public ICommand? CopyCommand { get; set; }
+    [System.Text.Json.Serialization.JsonIgnore] public ICommand? DownloadCommand { get; set; }
+    [System.Text.Json.Serialization.JsonIgnore] public ICommand? OpenCommand { get; set; }
+    [System.Text.Json.Serialization.JsonIgnore] public ICommand? ReuseCommand { get; set; }
+    [System.Text.Json.Serialization.JsonIgnore] public ICommand? RemoveCommand { get; set; }
+
+    private static string HostOf(string url) => Uri.TryCreate(url, UriKind.Absolute, out var u) ? u.Host : url;
+}
+
+/// <summary>Decifra links encurtados / safelinks até a URL de destino, mostrando cada passo e guardando histórico.</summary>
 public sealed class BypassViewModel : ObservableObject
 {
+    private const int MaxHistory = 200;
+
     private readonly MainViewModel _main;
+    private readonly string _historyPath;
     private CancellationTokenSource? _cts;
 
-    public event Action? RequestClose;
-
-    public BypassViewModel(MainViewModel main, string? initialUrl = null)
+    public BypassViewModel(MainViewModel main)
     {
         _main = main;
+        _historyPath = Path.Combine(main.DataDirectory, "bypass-history.json");
+
         ResolveCommand = new AsyncRelayCommand(ResolveAsync, () => !IsBusy && Services.UrlHelper.IsHttpUrl(Url.Trim()));
-        CancelCommand = new RelayCommand(() => { if (IsBusy) _cts?.Cancel(); else RequestClose?.Invoke(); });
+        CancelCommand = new RelayCommand(() => _cts?.Cancel(), () => IsBusy);
         PasteCommand = new RelayCommand(Paste);
+        ClearCommand = new RelayCommand(Clear);
         CopyCommand = new RelayCommand(() => Copy(FinalUrl), () => HasResult);
         OpenCommand = new RelayCommand(() => OpenInBrowser(FinalUrl), () => HasResult);
         OpenOriginalCommand = new RelayCommand(() => OpenInBrowser(Url.Trim()));
-        DownloadCommand = new RelayCommand(Download, () => HasResult);
+        DownloadCommand = new RelayCommand(() => Download(FinalUrl, Url.Trim()), () => HasResult);
+        ClearHistoryCommand = new RelayCommand(() => { History.Clear(); SaveHistory(); }, () => History.Count > 0);
 
-        if (!string.IsNullOrWhiteSpace(initialUrl)) Url = initialUrl;
+        LoadHistory();
     }
 
     public ICommand ResolveCommand { get; }
     public ICommand CancelCommand { get; }
     public ICommand PasteCommand { get; }
+    public ICommand ClearCommand { get; }
     public ICommand CopyCommand { get; }
     public ICommand OpenCommand { get; }
     public ICommand OpenOriginalCommand { get; }
     public ICommand DownloadCommand { get; }
+    public ICommand ClearHistoryCommand { get; }
 
     public ObservableCollection<string> LogLines { get; } = new();
     public ObservableCollection<BypassStepItem> Steps { get; } = new();
+    public ObservableCollection<BypassHistoryItem> History { get; } = new();
 
+    // ------------------------------------------------------------ estado
     private string _url = "";
     public string Url
     {
@@ -72,15 +107,12 @@ public sealed class BypassViewModel : ObservableObject
             if (Set(ref _isBusy, value))
             {
                 OnPropertyChanged(nameof(CanResolve));
-                OnPropertyChanged(nameof(CancelLabel));
                 CommandManager.InvalidateRequerySuggested();
             }
         }
     }
 
-    public string CancelLabel => IsBusy ? "Parar" : "Fechar";
-
-    private string _statusText = "Cole um link encurtado e clique em Decifrar.";
+    private string _statusText = "Cole um link encurtado (shrinkme, gplinks, safelink…) e clique em Decifrar.";
     public string StatusText { get => _statusText; private set => Set(ref _statusText, value); }
 
     private string _statusKind = "idle"; // idle | busy | ok | warn | error
@@ -92,7 +124,11 @@ public sealed class BypassViewModel : ObservableObject
         get => _finalUrl;
         private set
         {
-            if (Set(ref _finalUrl, value)) OnPropertyChanged(nameof(HasResult));
+            if (Set(ref _finalUrl, value))
+            {
+                OnPropertyChanged(nameof(HasResult));
+                CommandManager.InvalidateRequerySuggested();
+            }
         }
     }
 
@@ -109,6 +145,16 @@ public sealed class BypassViewModel : ObservableObject
 
     private string _summaryText = "";
     public string SummaryText { get => _summaryText; private set => Set(ref _summaryText, value); }
+
+    public bool HasHistory => History.Count > 0;
+
+    // ------------------------------------------------------------ ações
+    /// <summary>Define a URL e decifra imediatamente (menu da extensão, botão da toolbar com link, histórico).</summary>
+    public void ResolveNow(string url)
+    {
+        Url = url;
+        if (ResolveCommand.CanExecute(null)) ResolveCommand.Execute(null);
+    }
 
     private async Task ResolveAsync()
     {
@@ -145,12 +191,13 @@ public sealed class BypassViewModel : ObservableObject
                     Resolver = s.Resolver,
                     Description = s.Description,
                     Url = s.Url,
-                    Host = Uri.TryCreate(s.Url, UriKind.Absolute, out var u) ? u.Host : s.Url,
                     ElapsedText = s.ElapsedMs >= 1000 ? $"{s.ElapsedMs / 1000:0.0} s" : $"{s.ElapsedMs:0} ms"
                 });
             }
 
             var total = result.TotalMs >= 1000 ? $"{result.TotalMs / 1000:0.0} s" : $"{result.TotalMs:0} ms";
+            var chain = string.Join("  →  ", new[] { HostOf(url) }.Concat(result.Steps.Select(s => HostOf(s.Url))).Distinct());
+
             switch (result.Status)
             {
                 case ResolveStatus.Resolved:
@@ -158,10 +205,19 @@ public sealed class BypassViewModel : ObservableObject
                     IsDirectFile = result.IsDirectFile;
                     ResultKindText = result.IsDirectFile
                         ? $"Arquivo direto{(result.FileName != null ? " · " + result.FileName : "")}{(result.Size is > 0 ? " · " + FormatHelper.Bytes(result.Size.Value) : "")}"
-                        : "Página de destino (não é um arquivo direto — abra no navegador ou tente baixar)";
+                        : "Página de destino — não é um arquivo direto (abra no navegador ou tente baixar)";
                     StatusKind = "ok";
                     StatusText = $"Decifrado em {result.Steps.Count} passo(s) · {total}";
-                    SummaryText = string.Join("  →  ", new[] { HostOf(url) }.Concat(result.Steps.Select(s => HostOf(s.Url))).Distinct());
+                    SummaryText = chain;
+                    AddToHistory(new BypassHistoryItem
+                    {
+                        OriginalUrl = url,
+                        FinalUrl = result.FinalUrl,
+                        Chain = chain,
+                        StepCount = result.Steps.Count,
+                        IsDirectFile = result.IsDirectFile,
+                        FileName = result.FileName
+                    });
                     break;
 
                 case ResolveStatus.Unchanged:
@@ -200,6 +256,19 @@ public sealed class BypassViewModel : ObservableObject
         }
     }
 
+    private void Clear()
+    {
+        _cts?.Cancel();
+        Url = "";
+        FinalUrl = "";
+        NeedsBrowser = false;
+        Steps.Clear();
+        LogLines.Clear();
+        SummaryText = "";
+        StatusKind = "idle";
+        StatusText = "Cole um link encurtado (shrinkme, gplinks, safelink…) e clique em Decifrar.";
+    }
+
     private static string HostOf(string url) => Uri.TryCreate(url, UriKind.Absolute, out var u) ? u.Host : url;
 
     private void Paste()
@@ -215,26 +284,76 @@ public sealed class BypassViewModel : ObservableObject
 
     private void Copy(string text)
     {
+        if (string.IsNullOrEmpty(text)) return;
         try
         {
+            _main.SetClipboardIgnore(text);
             Clipboard.SetText(text);
-            _main.Toast("Copiado", text, "success");
+            _main.Toast("Link copiado", text, "success");
         }
         catch { }
     }
 
     private static void OpenInBrowser(string url)
     {
+        if (string.IsNullOrEmpty(url)) return;
         try { Process.Start(new ProcessStartInfo(url) { UseShellExecute = true }); } catch { }
     }
 
-    private void Download()
+    private void Download(string finalUrl, string originalUrl)
     {
-        if (!HasResult) return;
-        var request = new DownloadRequest { Url = FinalUrl, Referer = Url.Trim() };
-        _main.RequestAddDialog(request, "Link decifrado");
-        RequestClose?.Invoke();
+        if (string.IsNullOrEmpty(finalUrl)) return;
+        _main.RequestAddDialog(new DownloadRequest { Url = finalUrl, Referer = originalUrl }, "Link decifrado");
     }
 
-    public void Cancel() => _cts?.Cancel();
+    // ------------------------------------------------------------ histórico
+    private void AddToHistory(BypassHistoryItem item)
+    {
+        var existing = History.FirstOrDefault(h => h.OriginalUrl == item.OriginalUrl);
+        if (existing != null) History.Remove(existing);
+        Wire(item);
+        History.Insert(0, item);
+        while (History.Count > MaxHistory) History.RemoveAt(History.Count - 1);
+        OnPropertyChanged(nameof(HasHistory));
+        SaveHistory();
+    }
+
+    private void Wire(BypassHistoryItem item)
+    {
+        item.CopyCommand = new RelayCommand(() => Copy(item.FinalUrl));
+        item.DownloadCommand = new RelayCommand(() => Download(item.FinalUrl, item.OriginalUrl));
+        item.OpenCommand = new RelayCommand(() => OpenInBrowser(item.FinalUrl));
+        item.ReuseCommand = new RelayCommand(() => ResolveNow(item.OriginalUrl));
+        item.RemoveCommand = new RelayCommand(() =>
+        {
+            History.Remove(item);
+            OnPropertyChanged(nameof(HasHistory));
+            SaveHistory();
+        });
+    }
+
+    private void LoadHistory()
+    {
+        try
+        {
+            if (!File.Exists(_historyPath)) return;
+            var items = JsonSerializer.Deserialize<List<BypassHistoryItem>>(File.ReadAllText(_historyPath)) ?? new();
+            foreach (var it in items.Take(MaxHistory))
+            {
+                Wire(it);
+                History.Add(it);
+            }
+            OnPropertyChanged(nameof(HasHistory));
+        }
+        catch { }
+    }
+
+    private void SaveHistory()
+    {
+        try
+        {
+            File.WriteAllText(_historyPath, JsonSerializer.Serialize(History.ToList(), new JsonSerializerOptions { WriteIndented = true }));
+        }
+        catch { }
+    }
 }

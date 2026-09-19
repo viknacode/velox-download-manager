@@ -51,8 +51,9 @@ queda de conexão ou reinício do PC.
 
 **Decifrar links ([Velox.Core/Resolvers](src/Velox.Core/Resolvers))**
 - Resolve encurtadores/safelinks até a URL de destino sem passar por timers e páginas de
-  anúncio — como o bypass.city ou os *decrypters* do JDownloader. Botão **Decifrar link**
-  (`Ctrl+B`) mostra cada passo e o destino, com Copiar / Abrir / Baixar; o diálogo
+  anúncio — como o bypass.city ou os *decrypters* do JDownloader. View **Decifrador** na
+  sidebar (ou `Ctrl+B`): mostra cada passo, o link de destino com **Copiar / Baixar / Abrir**
+  e um histórico persistente dos links decifrados (cada um com Copiar e Baixar); o diálogo
   "Novo download" decifra automaticamente quando a URL colada é uma página; a extensão
   ganha o menu **Decifrar link com Velox**.
 - Resolvedores por *padrão de conteúdo* (funcionam em qualquer domínio do mesmo script):
@@ -96,7 +97,7 @@ src/Velox.App/             WPF (MVVM)
   Controls/SegmentBar.cs   barra de progresso por segmento
   Controls/SpeedGraph.cs   gráfico de área da velocidade
   ViewModels/              MainViewModel, DownloadItemViewModel, AddDownloadViewModel, SettingsViewModel
-  Views/                   MainWindow, AddDownloadWindow, BypassWindow, SettingsWindow, MessageWindow
+  Views/                   MainWindow, BypassView (view do Decifrador), AddDownloadWindow, SettingsWindow, MessageWindow
   Services/                ClipboardMonitor, TrayService, WindowEffects, Log
   Services/NativeHost.cs   modo "native messaging host" (stdin/stdout ↔ named pipe)
   Services/BridgeServer.cs servidor do named pipe que recebe os downloads da extensão

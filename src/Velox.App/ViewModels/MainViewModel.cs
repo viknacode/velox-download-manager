@@ -15,7 +15,7 @@ public interface IUiService
 {
     void ShowAddDialog(IReadOnlyList<string>? urls = null);
     void ShowAddDialogPrefilled(DownloadRequest request, string sourceLabel);
-    void ShowBypassDialog(string? url);
+    void ShowBypass(string? url);
     void ShowMainWindow();
     void ShowSettings();
     bool Confirm(string title, string message, string confirmLabel = "Confirmar", bool danger = false);
@@ -76,6 +76,7 @@ public sealed class MainViewModel : ObservableObject
     public ICollectionView ItemsView { get; }
     public ObservableCollection<NavItem> StatusFilters { get; } = new();
     public ObservableCollection<NavItem> CategoryFilters { get; } = new();
+    public ObservableCollection<NavItem> ToolItems { get; } = new();
     public ObservableCollection<ToastItem> Toasts { get; } = new();
 
     public MainViewModel(DownloadManager manager, IUiService ui)
@@ -94,6 +95,8 @@ public sealed class MainViewModel : ObservableObject
 
         foreach (var c in CategoryDetector.All)
             CategoryFilters.Add(new NavItem("cat:" + c, c, DownloadItemViewModel.GlyphFor(c), true));
+
+        ToolItems.Add(new NavItem("tool:bypass", "Decifrador", ""));
 
         _selectedFilter = StatusFilters[0];
         _selectedFilter.IsSelected = true;
@@ -117,12 +120,12 @@ public sealed class MainViewModel : ObservableObject
         PauseAllCommand = new RelayCommand(() => _manager.PauseAll());
         ResumeAllCommand = new RelayCommand(() => _manager.ResumeAll());
         ClearCompletedCommand = new RelayCommand(ClearCompleted);
-        SelectFilterCommand = new RelayCommand(p => { if (p is NavItem n) SelectedFilter = n; });
+        SelectFilterCommand = new RelayCommand(p => { if (p is NavItem n) SelectNav(n); });
         CloseDetailsCommand = new RelayCommand(() => SelectedItem = null);
         RemoveSelectedCommand = new RelayCommand(() => { if (SelectedItem != null) Remove(SelectedItem, false); });
         ToggleSelectedCommand = new RelayCommand(() => { if (SelectedItem != null) Toggle(SelectedItem); });
         PasteCommand = new RelayCommand(PasteFromClipboard);
-        OpenBypassCommand = new RelayCommand(() => _ui.ShowBypassDialog(null));
+        OpenBypassCommand = new RelayCommand(() => _ui.ShowBypass(null));
         ExitCommand = new RelayCommand(() => _ui.ExitApplication());
 
         _speedLimitEnabled = _manager.Settings.SpeedLimitEnabled;
@@ -163,6 +166,48 @@ public sealed class MainViewModel : ObservableObject
     }
 
     public string FilterTitle => _selectedFilter.Label;
+
+    /// <summary>Item de navegação clicado: filtro de downloads ou ferramenta (troca a view principal).</summary>
+    private void SelectNav(NavItem item)
+    {
+        if (item.Key.StartsWith("tool:"))
+        {
+            _selectedFilter.IsSelected = false;
+            foreach (var t in ToolItems) t.IsSelected = ReferenceEquals(t, item);
+            IsBypassView = item.Key == "tool:bypass";
+            return;
+        }
+
+        foreach (var t in ToolItems) t.IsSelected = false;
+        IsBypassView = false;
+        SelectedFilter = item;
+        item.IsSelected = true;
+    }
+
+    private bool _isBypassView;
+    /// <summary>true quando a área principal mostra o Decifrador em vez da lista de downloads.</summary>
+    public bool IsBypassView
+    {
+        get => _isBypassView;
+        private set
+        {
+            if (Set(ref _isBypassView, value)) OnPropertyChanged(nameof(IsDownloadsView));
+        }
+    }
+
+    public bool IsDownloadsView => !_isBypassView;
+
+    private BypassViewModel? _bypass;
+    public BypassViewModel Bypass => _bypass ??= new BypassViewModel(this);
+
+    /// <summary>Abre a view do Decifrador; com URL, já começa a decifrar.</summary>
+    public void ShowBypassView(string? url)
+    {
+        SelectNav(ToolItems[0]);
+        if (!string.IsNullOrWhiteSpace(url)) Bypass.ResolveNow(url.Trim());
+    }
+
+    public void SetClipboardIgnore(string text) => _ui.SetClipboardIgnore(text);
 
     private string _searchText = "";
     public string SearchText

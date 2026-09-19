@@ -14,7 +14,6 @@ public partial class MainWindow : Window, IUiService
     private TrayService? _tray;
     private bool _exiting;
     private AddDownloadWindow? _addDialog;
-    private BypassWindow? _bypassDialog;
 
     public MainWindow()
     {
@@ -222,7 +221,7 @@ public partial class MainWindow : Window, IUiService
                 if (string.IsNullOrWhiteSpace(msg.Url) || !UrlHelper.IsHttpUrl(msg.Url))
                     return BrowserMessage.Error("Endereço inválido.");
                 Log.Info($"Decifrar link (navegador): {msg.Url}");
-                ShowBypassDialog(msg.Url.Trim());
+                ShowBypass(msg.Url.Trim());
                 return BrowserMessage.Ok();
 
             case "download":
@@ -242,19 +241,11 @@ public partial class MainWindow : Window, IUiService
 
     public void ShowMainWindow() => ShowFromTray();
 
-    public void ShowBypassDialog(string? url)
+    public void ShowBypass(string? url)
     {
         if (url != null) ShowFromTray();
-        if (_bypassDialog != null && _bypassDialog.IsVisible)
-        {
-            if (!string.IsNullOrWhiteSpace(url)) _bypassDialog.SetUrl(url);
-            _bypassDialog.Activate();
-            return;
-        }
-
-        _bypassDialog = new BypassWindow(_vm, url) { Owner = IsVisible ? this : null };
-        _bypassDialog.Closed += (_, _) => _bypassDialog = null;
-        _bypassDialog.Show();
+        _vm.ShowBypassView(url);
+        Dispatcher.BeginInvoke(() => { if (url == null) BypassPage.FocusInput(); }, System.Windows.Threading.DispatcherPriority.Loaded);
     }
 
     public void ShowAddDialogPrefilled(Velox.Core.Models.DownloadRequest request, string sourceLabel)
