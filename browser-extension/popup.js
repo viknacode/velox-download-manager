@@ -1,4 +1,4 @@
-const DEFAULTS = { enabled: true, minSizeKb: 0, ignoreTypes: '', notify: true };
+const DEFAULTS = { enabled: true, minSizeKb: 0, ignoreTypes: '', notify: true, videoButton: true };
 
 const $ = id => document.getElementById(id);
 
@@ -6,6 +6,7 @@ async function load() {
   const s = { ...DEFAULTS, ...(await chrome.storage.local.get(DEFAULTS)) };
   $('enabled').checked = s.enabled;
   $('notify').checked = s.notify;
+  $('videoButton').checked = s.videoButton;
   $('minSizeKb').value = s.minSizeKb;
   $('ignoreTypes').value = s.ignoreTypes;
 }
@@ -14,12 +15,13 @@ function save() {
   chrome.storage.local.set({
     enabled: $('enabled').checked,
     notify: $('notify').checked,
+    videoButton: $('videoButton').checked,
     minSizeKb: Math.max(0, parseInt($('minSizeKb').value, 10) || 0),
     ignoreTypes: $('ignoreTypes').value.trim()
   });
 }
 
-for (const id of ['enabled', 'notify', 'minSizeKb', 'ignoreTypes']) {
+for (const id of ['enabled', 'notify', 'videoButton', 'minSizeKb', 'ignoreTypes']) {
   $(id).addEventListener('change', save);
   $(id).addEventListener('input', save);
 }

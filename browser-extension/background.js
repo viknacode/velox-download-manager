@@ -7,20 +7,24 @@ const DEFAULTS = {
   enabled: true,        // capturar downloads automaticamente
   minSizeKb: 0,         // ignorar arquivos menores que X KB (0 = capturar tudo)
   ignoreTypes: '',      // extensões ignoradas, separadas por vírgula (ex.: "torrent, pdf")
-  notify: true          // notificação ao capturar
+  notify: true,         // notificação ao capturar
+  videoButton: true     // botão flutuante "Baixar com Velox" sobre vídeos
 };
 
 let settings = { ...DEFAULTS };
 const inFlight = new Set();
 
 // rastro dos últimos eventos (diagnóstico: visível em chrome.storage.local.trace)
-async function trace(...parts) {
+let traceChain = Promise.resolve();
+function trace(...parts) {
   const line = new Date().toISOString().slice(11, 19) + ' ' + parts.map(p => typeof p === 'string' ? p : JSON.stringify(p)).join(' ');
   console.debug('[Velox]', line);
-  try {
-    const { trace: old = [] } = await chrome.storage.local.get('trace');
-    await chrome.storage.local.set({ trace: [...old.slice(-29), line] });
-  } catch { }
+  traceChain = traceChain.then(async () => {
+    try {
+      const { trace: old = [] } = await chrome.storage.local.get('trace');
+      await chrome.storage.local.set({ trace: [...old.slice(-29), line] });
+    } catch { }
+  });
 }
 
 // ------------------------------------------------------------------ configurações
@@ -246,7 +250,90 @@ chrome.runtime.onMessage.addListener((msg, _sender, reply) => {
     sendNative({ type: 'show' }).then(reply);
     return true;
   }
+  if (msg?.type === 'getMedia') {
+    const list = (mediaByTab.get(_sender?.tab?.id ?? -1) || []).slice().sort((a, b) => b.at - a.at);
+    reply({ media: list });
+    return true;
+  }
+  if (msg?.type === 'sendVideo') {
+    sendVideoToVelox(msg, _sender).then(reply);
+    return true;
+  }
 });
+
+// ------------------------------------------------------------------ sniffer de mídia (botão de vídeo)
+// Observa respostas de vídeo/áudio por aba para oferecer o arquivo real mesmo quando o
+// player usa blob:/MSE. Só leitura (webRequest não bloqueante, permitido no MV3).
+
+const mediaByTab = new Map();   // tabId -> [{url, type, size, at}]
+const MEDIA_EXT = /\.(mp4|m4v|webm|mkv|mov|avi|flv|ts|mp3|m4a|aac|ogg|opus|wav|flac)(?:$|[?#])/i;
+
+function normalizeMediaUrl(raw) {
+  // remove parâmetros de faixa (chunks) para agrupar o mesmo arquivo
+  try {
+    const u = new URL(raw);
+    for (const k of ['range', 'bytes', 'rn', 'rbuf']) u.searchParams.delete(k);
+    return u.toString();
+  } catch { return raw; }
+}
+
+function rememberMedia(tabId, url, type, size) {
+  if (tabId < 0) return;
+  const key = normalizeMediaUrl(url);
+  let list = mediaByTab.get(tabId);
+  if (!list) { list = []; mediaByTab.set(tabId, list); }
+  const existing = list.find(m => m.url === key);
+  if (existing) { if (size > existing.size) existing.size = size; existing.at = Date.now(); return; }
+  list.push({ url: key, type, size, at: Date.now() });
+  if (list.length > 40) list.shift();
+}
+
+safe(() => chrome.webRequest.onHeadersReceived.addListener(details => {
+  try {
+    if (details.tabId < 0 || !/^https?:/i.test(details.url)) return;
+    const h = Object.fromEntries((details.responseHeaders || []).map(x => [x.name.toLowerCase(), x.value || '']));
+    const type = (h['content-type'] || '').toLowerCase();
+    const isMedia = type.startsWith('video/') || type.startsWith('audio/') ||
+      (type === 'application/octet-stream' && MEDIA_EXT.test(details.url)) ||
+      (!type && MEDIA_EXT.test(details.url));
+    if (!isMedia) return;
+    if (/mpegurl|dash\+xml/.test(type)) return; // manifestos HLS/DASH: sem suporte ainda
+
+    let size = -1;
+    const range = /\/(\d+)\s*$/.exec(h['content-range'] || '');
+    if (range) size = parseInt(range[1], 10);
+    else if (h['content-length']) size = parseInt(h['content-length'], 10);
+    if (size > 0 && size < 200 * 1024) return; // prévias/miniaturas
+
+    rememberMedia(details.tabId, details.url, type, size);
+  } catch { }
+}, { urls: ['<all_urls>'], types: ['media', 'xmlhttprequest', 'other', 'object'] }, ['responseHeaders']));
+
+safe(() => chrome.tabs.onUpdated.addListener((tabId, info) => { if (info.status === 'loading') mediaByTab.delete(tabId); }));
+safe(() => chrome.tabs.onRemoved.addListener(tabId => mediaByTab.delete(tabId)));
+
+function sanitizeFileName(name) {
+  return String(name || '').replace(/[\\/:*?"<>|\u0000-\u001f]+/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 100);
+}
+
+function extForMedia(url, mime) {
+  const m = MEDIA_EXT.exec(url);
+  if (m) return '.' + m[1].toLowerCase();
+  const t = (mime || '').split(';')[0].trim();
+  return ({ 'video/mp4': '.mp4', 'video/webm': '.webm', 'video/x-matroska': '.mkv', 'video/quicktime': '.mov', 'video/x-flv': '.flv',
+            'video/mp2t': '.ts', 'audio/mpeg': '.mp3', 'audio/mp4': '.m4a', 'audio/aac': '.aac', 'audio/ogg': '.ogg', 'audio/webm': '.weba',
+            'audio/wav': '.wav', 'audio/flac': '.flac' })[t] || '.mp4';
+}
+
+async function sendVideoToVelox(msg, sender) {
+  const title = sanitizeFileName(msg.title) || sanitizeFileName(new URL(msg.pageUrl || msg.url).hostname);
+  const fileName = title + extForMedia(msg.url, msg.mime);
+  const payload = await buildPayload({ url: msg.url, referrer: msg.pageUrl || sender?.tab?.url || '', fileName, mime: msg.mime || '', size: msg.size ?? -1 });
+  payload.source = 'video';
+  const res = await sendNative(payload);
+  if (res?.ok) flashBadge('✓', '#34D399'); else notifyError(res?.error);
+  return res;
+}
 
 // ------------------------------------------------------------------ notificações
 

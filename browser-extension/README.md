@@ -22,6 +22,10 @@ estiver fechado, ele é aberto automaticamente.
 - Botão direito em um link encurtado (shrinkme, gplinks…) → **Decifrar link com Velox**: abre a
   janela "Decifrar link" do Velox já resolvendo até o destino.
 - Se o Velox não responder, o download continua normalmente no navegador.
+- **Botão nos vídeos**: passe o mouse sobre um vídeo → aparece "Baixar com Velox" no canto
+  superior direito. Clique envia ao Velox (nome = título da página). Se houver mais de um
+  arquivo (qualidades/áudio), abre um painel com tipo e tamanho. Pode ser desligado no popup.
+  Funciona com arquivos progressivos (mp4, webm, mp3…); HLS/DASH ainda não.
 
 ## Como funciona
 
@@ -32,7 +36,8 @@ e chama `chrome.runtime.sendNativeMessage("com.velox.dm", …)`. O Chrome inicia
 mensagem à instância do Velox pelo named pipe `VeloxDM_Bridge`. O ID da extensão é fixo
 (`ednjdkmgoihpnopanpflbledhfkkmagh`) graças ao campo `key` do `manifest.json`.
 
-Diagnóstico: os últimos eventos ficam em `chrome.storage.local.trace` (visível no
+Diagnóstico: os últimos eventos ficam em `chrome.storage.local.trace` (downloads) e
+`chrome.storage.local.videoTrace` (botão de vídeo) (visível no
 console do service worker em `chrome://extensions` → *Inspecionar visualizações*).
 
 ## Limitações

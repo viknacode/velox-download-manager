@@ -45,6 +45,15 @@ queda de conexão ou reinício do PC.
   `VeloxDM.exe` atua como host e repassa ao app pelo named pipe `VeloxDM_Bridge`.
   Se o Velox estiver fechado, é aberto automaticamente; se não responder, o download
   segue no navegador. Registro em HKCU (sem administrador), feito pelo app a cada abertura.
+- **Botão "Baixar com Velox" sobre vídeos** (estilo IDM): ao passar o mouse em qualquer
+  `<video>` da página aparece um botão discreto no canto; um clique envia o arquivo ao Velox
+  com cookies/Referer e nome sugerido pelo título da página. Um *sniffer* de mídia
+  (`webRequest`, só leitura) encontra o arquivo real mesmo quando o player usa `blob:`;
+  com várias opções (qualidades, áudio) abre um painel com tipo e tamanho. Streams
+  segmentados (HLS/DASH, ex.: YouTube) ainda não são suportados.
+
+  ![Botão de vídeo](docs/screenshot-video-button.png)
+
 - Instalação: Configurações → Navegador → *Instalar integração*, depois
   `chrome://extensions` → Modo do desenvolvedor → *Carregar sem compactação* → pasta
   `extension` ao lado do executável. Detalhes em [browser-extension/README.md](browser-extension/README.md).

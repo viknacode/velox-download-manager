@@ -378,6 +378,7 @@ public sealed class MainViewModel : ObservableObject
 
         var source = msg.Source switch
         {
+            "video" => "Vídeo capturado do navegador",
             "edge" => "Capturado do Edge",
             "chrome" => "Capturado do Chrome",
             _ => "Capturado do navegador"
