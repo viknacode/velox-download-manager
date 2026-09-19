@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <title>Velox</title>
+  <style>
+    :root {
+      --bg: #10131C; --surface: #161A26; --surface2: #1E2333; --border: #232838;
+      --text: #EDEFF7; --muted: #8C93AB; --accent: #7C6CFF; --accent2: #22D3EE;
+      --ok: #34D399; --err: #F87171;
+    }
+    * { box-sizing: border-box; }
+    body { width: 300px; margin: 0; background: var(--bg); color: var(--text);
+           font: 13px "Segoe UI Variable Text", "Segoe UI", sans-serif; }
+    header { display: flex; align-items: center; gap: 10px; padding: 14px 16px 10px; }
+    header img { width: 24px; height: 24px; border-radius: 7px; }
+    header b { font-size: 14px; }
+    header span { color: var(--muted); font-size: 12px; }
+    .status { margin: 0 16px 10px; padding: 8px 10px; border-radius: 9px; background: var(--surface);
+              border: 1px solid var(--border); font-size: 12px; color: var(--muted); display: flex; gap: 8px; align-items: center; }
+    .dot { width: 8px; height: 8px; border-radius: 4px; background: var(--muted); flex: none; }
+    .status.ok .dot { background: var(--ok); } .status.ok { color: var(--text); }
+    .status.err .dot { background: var(--err); }
+    .row { display: flex; align-items: center; justify-content: space-between; padding: 10px 16px; border-top: 1px solid var(--border); }
+    .row label { display: flex; flex-direction: column; gap: 2px; }
+    .row small { color: var(--muted); font-size: 11px; }
+    .switch { position: relative; width: 40px; height: 22px; flex: none; }
+    .switch input { opacity: 0; width: 0; height: 0; }
+    .switch i { position: absolute; inset: 0; background: #272D40; border-radius: 11px; transition: .15s; }
+    .switch i::before { content: ""; position: absolute; width: 16px; height: 16px; left: 3px; top: 3px; border-radius: 8px;
+                        background: var(--muted); transition: .15s; }
+    .switch input:checked + i { background: var(--accent); }
+    .switch input:checked + i::before { transform: translateX(18px); background: #fff; }
+    input[type=text], input[type=number] { width: 110px; background: var(--surface2); border: 1px solid var(--border); color: var(--text);
+                        border-radius: 8px; padding: 6px 8px; font: inherit; font-size: 12px; outline: none; }
+    input[type=text]:focus, input[type=number]:focus { border-color: var(--accent); }
+    input[type=text] { width: 130px; }
+    footer { display: flex; gap: 8px; padding: 12px 16px 14px; border-top: 1px solid var(--border); }
+    button { flex: 1; border: 0; border-radius: 9px; padding: 8px 10px; font: inherit; font-weight: 600; cursor: pointer;
+             background: var(--surface2); color: var(--text); }
+    button.primary { background: linear-gradient(135deg, var(--accent), var(--accent2)); color: #fff; }
+    button:hover { filter: brightness(1.1); }
+    kbd { background: var(--surface2); border: 1px solid var(--border); border-radius: 4px; padding: 0 4px; font-size: 10px; }
+  </style>
+</head>
+<body>
+  <header>
+    <img src="icons/icon48.png" alt="">
+    <div><b>Velox</b><br><span>Download Manager</span></div>
+  </header>
+
+  <div id="status" class="status"><i class="dot"></i><span id="statusText">Verificando conexão…</span></div>
+
+  <div class="row">
+    <label>Capturar downloads<small>Atalho: <kbd>Alt</kbd>+<kbd>Shift</kbd>+<kbd>V</kbd></small></label>
+    <span class="switch"><input type="checkbox" id="enabled"><i></i></span>
+  </div>
+  <div class="row">
+    <label>Notificar ao capturar<small>Aviso do sistema a cada envio</small></label>
+    <span class="switch"><input type="checkbox" id="notify"><i></i></span>
+  </div>
+  <div class="row">
+    <label>Ignorar menores que<small>KB — 0 captura tudo</small></label>
+    <input type="number" id="minSizeKb" min="0" step="64">
+  </div>
+  <div class="row">
+    <label>Ignorar tipos<small>ex.: torrent, pdf, txt</small></label>
+    <input type="text" id="ignoreTypes" placeholder="nenhum">
+  </div>
+
+  <footer>
+    <button id="open" class="primary">Abrir Velox</button>
+  </footer>
+  <script src="popup.js"></script>
+</body>
+</html>

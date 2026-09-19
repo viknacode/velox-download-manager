@@ -1,0 +1,21 @@
+<Application x:Class="Velox.App.App"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:conv="clr-namespace:Velox.App.Converters"
+             ShutdownMode="OnExplicitShutdown">
+    <Application.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <ResourceDictionary Source="Themes/Theme.xaml" />
+            </ResourceDictionary.MergedDictionaries>
+
+            <conv:BoolToVisibilityConverter x:Key="BoolToVis" />
+            <conv:BoolToVisibilityConverter x:Key="InvBoolToVis" Invert="True" />
+            <conv:BoolToVisibilityConverter x:Key="BoolToVisHidden" UseHidden="True" />
+            <conv:NullToVisibilityConverter x:Key="NullToVis" />
+            <conv:NullToVisibilityConverter x:Key="NotNullToVis" Invert="True" />
+            <conv:EqualsConverter x:Key="Equals" />
+            <conv:CountToVisibilityConverter x:Key="CountToVis" />
+        </ResourceDictionary>
+    </Application.Resources>
+</Application>

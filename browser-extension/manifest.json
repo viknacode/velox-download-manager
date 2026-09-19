@@ -1,0 +1,43 @@
+{
+  "manifest_version": 3,
+  "name": "Velox Download Manager",
+  "short_name": "Velox",
+  "version": "1.0.2",
+  "description": "Envia os downloads do navegador para o Velox Download Manager (conexões paralelas, retomada e fila).",
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAwSKnhzM36SPBx4hRsloHct7zfSgD/Y7hVMjjFHPvDAzYMDpBBh2Q2VLgICpPTP98aHzfgHb/exk9toXSlvZDWadFqudWFj6WfOEJ0t0cvzk/q7eSBcdRYtQQoGFYvreAdL/vLGrt8qNKqSwVtfmRtF3odnAjf6xoEpqyjhzl9bnXegT5xV4Zcs0WoMGwfQ1YrzWecqlJmUykWO4qsUM3JYUyDFdVWHjzq4B0GAbeXgeIjnZkB+p0mHt8Ql4Wnlr5ZOQJP0HzqDnAEcf58yAERi+mdn4OifT2CeIvqJslxfGwsjDerSHat9hd0bsE2bujFGKc4clYLOGzRrDt2kboiQIDAQAB",
+  "icons": {
+    "16": "icons/icon16.png",
+    "32": "icons/icon32.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
+  "permissions": [
+    "downloads",
+    "nativeMessaging",
+    "cookies",
+    "contextMenus",
+    "storage",
+    "notifications"
+  ],
+  "host_permissions": [
+    "<all_urls>"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_title": "Velox Download Manager",
+    "default_popup": "popup.html",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "32": "icons/icon32.png",
+      "48": "icons/icon48.png"
+    }
+  },
+  "commands": {
+    "toggle-capture": {
+      "suggested_key": { "default": "Alt+Shift+V" },
+      "description": "Ativar/desativar captura de downloads"
+    }
+  }
+}

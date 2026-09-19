@@ -1,0 +1,600 @@
+<Window x:Class="Velox.App.Views.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:controls="clr-namespace:Velox.App.Controls"
+        xmlns:vm="clr-namespace:Velox.App.ViewModels"
+        mc:Ignorable="d"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        d:DataContext="{d:DesignInstance Type=vm:MainViewModel}"
+        Title="Velox Download Manager"
+        Width="1280" Height="800" MinWidth="980" MinHeight="620"
+        WindowStartupLocation="CenterScreen"
+        WindowStyle="None" AllowsTransparency="False" ResizeMode="CanResize"
+        Background="{StaticResource BgBrush}" Foreground="{StaticResource TextBrush}"
+        FontFamily="{StaticResource UiFont}" FontSize="13"
+        TextOptions.TextFormattingMode="Ideal" UseLayoutRounding="True" SnapsToDevicePixels="True"
+        AllowDrop="True" Icon="pack://application:,,,/VeloxDM;component/Assets/app.ico">
+
+    <WindowChrome.WindowChrome>
+        <WindowChrome CaptionHeight="40" ResizeBorderThickness="6" GlassFrameThickness="0"
+                      CornerRadius="0" UseAeroCaptionButtons="False" NonClientFrameEdges="None" />
+    </WindowChrome.WindowChrome>
+
+    <Window.InputBindings>
+        <KeyBinding Key="N" Modifiers="Ctrl" Command="{Binding AddDownloadCommand}" />
+        <KeyBinding Key="V" Modifiers="Ctrl" Command="{Binding PasteCommand}" />
+        <KeyBinding Key="OemComma" Modifiers="Ctrl" Command="{Binding OpenSettingsCommand}" />
+        <KeyBinding Key="B" Modifiers="Ctrl" Command="{Binding OpenBypassCommand}" />
+        <KeyBinding Key="Delete" Command="{Binding RemoveSelectedCommand}" />
+        <KeyBinding Key="Escape" Command="{Binding CloseDetailsCommand}" />
+    </Window.InputBindings>
+
+    <Window.Resources>
+        <!-- ===== card de download ===== -->
+        <DataTemplate x:Key="DownloadCard" DataType="{x:Type vm:DownloadItemViewModel}">
+            <Grid Background="Transparent">
+                <Grid.ContextMenu>
+                    <ContextMenu>
+                        <MenuItem Header="{Binding ToggleLabel}" Command="{Binding ToggleCommand}" IsEnabled="{Binding CanToggle}">
+                            <MenuItem.Icon>
+                                <TextBlock Style="{StaticResource Icon}" FontSize="14" Text="{Binding ToggleGlyph}" />
+                            </MenuItem.Icon>
+                        </MenuItem>
+                        <MenuItem Header="Reiniciar do zero" Command="{Binding RestartCommand}">
+                            <MenuItem.Icon>
+                                <TextBlock Style="{StaticResource Icon}" FontSize="14" Text="&#xE72C;" />
+                            </MenuItem.Icon>
+                        </MenuItem>
+                        <Separator />
+                        <MenuItem Header="Abrir arquivo" Command="{Binding OpenFileCommand}">
+                            <MenuItem.Icon>
+                                <TextBlock Style="{StaticResource Icon}" FontSize="14" Text="&#xE8E5;" />
+                            </MenuItem.Icon>
+                        </MenuItem>
+                        <MenuItem Header="Abrir pasta" Command="{Binding OpenFolderCommand}">
+                            <MenuItem.Icon>
+                                <TextBlock Style="{StaticResource Icon}" FontSize="14" Text="&#xE8B7;" />
+                            </MenuItem.Icon>
+                        </MenuItem>
+                        <MenuItem Header="Copiar link" Command="{Binding CopyUrlCommand}">
+                            <MenuItem.Icon>
+                                <TextBlock Style="{StaticResource Icon}" FontSize="14" Text="&#xE71B;" />
+                            </MenuItem.Icon>
+                        </MenuItem>
+                        <Separator />
+                        <MenuItem Header="Remover da lista" Command="{Binding RemoveCommand}">
+                            <MenuItem.Icon>
+                                <TextBlock Style="{StaticResource Icon}" FontSize="14" Text="&#xE74D;" />
+                            </MenuItem.Icon>
+                        </MenuItem>
+                        <MenuItem Header="Remover e apagar arquivo" Command="{Binding RemoveWithFileCommand}"
+                                  Foreground="{StaticResource DangerBrush}">
+                            <MenuItem.Icon>
+                                <TextBlock Style="{StaticResource Icon}" FontSize="14" Text="&#xE74D;" />
+                            </MenuItem.Icon>
+                        </MenuItem>
+                    </ContextMenu>
+                </Grid.ContextMenu>
+
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+
+                <Border Width="42" Height="42" CornerRadius="11" Background="{StaticResource Surface3Brush}"
+                        VerticalAlignment="Center">
+                    <TextBlock Style="{StaticResource Icon}" Text="{Binding IconGlyph}" FontSize="18"
+                               Foreground="{StaticResource Accent2Brush}" />
+                </Border>
+
+                <Grid Grid.Column="1" Margin="14,0,14,0" VerticalAlignment="Center">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+
+                    <Grid Grid.Row="0">
+                        <TextBlock Text="{Binding FileName}" FontSize="13.5" FontWeight="SemiBold"
+                                   TextTrimming="CharacterEllipsis" Margin="0,0,64,0" />
+                        <TextBlock Text="{Binding PercentText}" HorizontalAlignment="Right" FontSize="12"
+                                   FontWeight="SemiBold" Foreground="{StaticResource MutedBrush}" />
+                    </Grid>
+
+                    <controls:SegmentBar Grid.Row="1" Height="6" Margin="0,8,0,8"
+                                         Segments="{Binding Segments}" TotalSize="{Binding TotalSize}"
+                                         Progress="{Binding Progress}" IsIndeterminate="{Binding IsIndeterminate}"
+                                         TrackBrush="{StaticResource Surface3Brush}"
+                                         FillBrush="{StaticResource AccentBrush}"
+                                         ActiveBrush="{StaticResource Accent2Brush}"
+                                         CompletedBrush="{StaticResource SuccessBrush}" />
+
+                    <StackPanel Grid.Row="2" Orientation="Horizontal">
+                        <Border Style="{StaticResource StatusPill}">
+                            <TextBlock Style="{StaticResource StatusPillText}" Text="{Binding StatusText}" />
+                        </Border>
+                        <TextBlock Text="{Binding ProgressText}" Style="{StaticResource Muted}" Margin="10,0,0,0"
+                                   VerticalAlignment="Center" />
+                        <TextBlock Text="•" Style="{StaticResource Muted}" Margin="8,0" VerticalAlignment="Center"
+                                   Visibility="{Binding DetailText, Converter={StaticResource NullToVis}}" />
+                        <TextBlock Text="{Binding DetailText}" Style="{StaticResource Muted}" VerticalAlignment="Center"
+                                   TextTrimming="CharacterEllipsis" MaxWidth="460" />
+                    </StackPanel>
+                </Grid>
+
+                <StackPanel Grid.Column="2" VerticalAlignment="Center" MinWidth="112" Margin="0,0,6,0">
+                    <TextBlock Text="{Binding SpeedText}" FontSize="15" FontWeight="SemiBold"
+                               HorizontalAlignment="Right" Foreground="{StaticResource Accent2Brush}" />
+                    <TextBlock Text="{Binding EtaText}" Style="{StaticResource Muted}" FontSize="11.5"
+                               HorizontalAlignment="Right" Margin="0,2,0,0" />
+                </StackPanel>
+
+                <StackPanel Grid.Column="3" Orientation="Horizontal" VerticalAlignment="Center" Margin="6,0,0,0">
+                    <Button Style="{StaticResource IconButton}" Command="{Binding ToggleCommand}"
+                            ToolTip="{Binding ToggleTooltip}" IsEnabled="{Binding CanToggle}">
+                        <TextBlock Style="{StaticResource Icon}" Text="{Binding ToggleGlyph}" />
+                    </Button>
+                    <Button Style="{StaticResource IconButton}" Command="{Binding OpenFolderCommand}" ToolTip="Abrir pasta">
+                        <TextBlock Style="{StaticResource Icon}" Text="&#xE8B7;" />
+                    </Button>
+                    <Button Style="{StaticResource DangerIconButton}" Command="{Binding RemoveCommand}" ToolTip="Remover">
+                        <TextBlock Style="{StaticResource Icon}" Text="&#xE74D;" />
+                    </Button>
+                </StackPanel>
+            </Grid>
+        </DataTemplate>
+
+        <!-- ===== item de navegação ===== -->
+        <DataTemplate x:Key="NavTemplate" DataType="{x:Type vm:NavItem}">
+            <RadioButton Style="{StaticResource NavItem}" GroupName="Nav"
+                         IsChecked="{Binding IsSelected, Mode=TwoWay}"
+                         Command="{Binding DataContext.SelectFilterCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                         CommandParameter="{Binding}" />
+        </DataTemplate>
+
+        <!-- ===== estatística no painel de detalhes ===== -->
+        <Style x:Key="StatLabel" TargetType="TextBlock" BasedOn="{StaticResource {x:Type TextBlock}}">
+            <Setter Property="Foreground" Value="{StaticResource MutedStrongBrush}" />
+            <Setter Property="FontSize" Value="10.5" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+        </Style>
+        <Style x:Key="StatValue" TargetType="TextBlock" BasedOn="{StaticResource {x:Type TextBlock}}">
+            <Setter Property="FontSize" Value="13.5" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="Margin" Value="0,3,0,0" />
+            <Setter Property="TextTrimming" Value="CharacterEllipsis" />
+        </Style>
+    </Window.Resources>
+
+    <Border x:Name="Root" Background="{StaticResource BgBrush}">
+        <Grid>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="40" />
+                <RowDefinition Height="*" />
+            </Grid.RowDefinitions>
+
+            <!-- ============================ BARRA DE TÍTULO ============================ -->
+            <Grid Grid.Row="0">
+                <StackPanel Orientation="Horizontal" Margin="16,0" VerticalAlignment="Center">
+                    <Image Source="pack://application:,,,/VeloxDM;component/Assets/logo.png" Width="20" Height="20"
+                           RenderOptions.BitmapScalingMode="HighQuality" />
+                    <TextBlock Text="Velox" FontWeight="Bold" FontSize="13" Margin="9,0,0,0" VerticalAlignment="Center" />
+                    <TextBlock Text="Download Manager" Foreground="{StaticResource MutedBrush}" FontSize="13"
+                               Margin="5,0,0,0" VerticalAlignment="Center" />
+                </StackPanel>
+
+                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center"
+                            Margin="0,0,6,0" WindowChrome.IsHitTestVisibleInChrome="True">
+                    <Button Style="{StaticResource TitleBarButton}" Click="Minimize_Click" ToolTip="Minimizar">
+                        <TextBlock Style="{StaticResource Icon}" FontSize="10" Text="&#xE921;" />
+                    </Button>
+                    <Button Style="{StaticResource TitleBarButton}" Click="Maximize_Click" ToolTip="Maximizar">
+                        <TextBlock x:Name="MaxGlyph" Style="{StaticResource Icon}" FontSize="10" Text="&#xE922;" />
+                    </Button>
+                    <Button Style="{StaticResource TitleBarCloseButton}" Click="Close_Click" ToolTip="Fechar">
+                        <TextBlock Style="{StaticResource Icon}" FontSize="10" Text="&#xE8BB;" />
+                    </Button>
+                </StackPanel>
+            </Grid>
+
+            <!-- ============================ CORPO ============================ -->
+            <Grid Grid.Row="1">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="238" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+
+                <!-- ===== SIDEBAR ===== -->
+                <Border Grid.Column="0" Background="{StaticResource SidebarGradient}"
+                        BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,0,1,0">
+                    <DockPanel>
+                        <StackPanel DockPanel.Dock="Bottom" Margin="0,0,0,12">
+                            <Border Margin="12,0,12,8" Background="{StaticResource Surface2Brush}"
+                                    BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="12"
+                                    Padding="14,12">
+                                <StackPanel>
+                                    <TextBlock Text="VELOCIDADE TOTAL" Style="{StaticResource SectionLabel}" Margin="0,0,0,2" />
+                                    <TextBlock Text="{Binding TotalSpeedText}" FontSize="21" FontWeight="Bold"
+                                               Foreground="{StaticResource Accent2Brush}" />
+                                    <controls:SpeedGraph Height="46" Values="{Binding GlobalHistory}"
+                                                         Fill="{StaticResource GraphFill}"
+                                                         Stroke="{StaticResource Accent2Brush}"
+                                                         ShowLabels="False" ShowGrid="False" Margin="0,8,0,12" />
+                                    <CheckBox Style="{StaticResource ToggleSwitch}" IsChecked="{Binding SpeedLimitEnabled}"
+                                              FontSize="12">
+                                        <TextBlock Text="{Binding SpeedLimitText}" FontSize="12" TextTrimming="CharacterEllipsis"
+                                                   Foreground="{StaticResource MutedBrush}" />
+                                    </CheckBox>
+                                </StackPanel>
+                            </Border>
+                            <Button Style="{StaticResource GhostButton}" Command="{Binding OpenSettingsCommand}"
+                                    Margin="12,0" AutomationProperties.Name="Configurações" HorizontalContentAlignment="Left" Padding="12,9">
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock Style="{StaticResource Icon}" Text="&#xE713;" FontSize="15" />
+                                    <TextBlock Text="Configurações" Margin="10,0,0,0" VerticalAlignment="Center" />
+                                    <TextBlock Text="Ctrl+," Margin="14,0,0,0" FontSize="11" VerticalAlignment="Center"
+                                               Foreground="{StaticResource MutedStrongBrush}" />
+                                </StackPanel>
+                            </Button>
+                        </StackPanel>
+
+                        <ScrollViewer VerticalScrollBarVisibility="Auto">
+                            <StackPanel Margin="0,6,0,0">
+                                <TextBlock Text="DOWNLOADS" Style="{StaticResource SectionLabel}" />
+                                <ItemsControl ItemsSource="{Binding StatusFilters}" ItemTemplate="{StaticResource NavTemplate}" />
+                                <TextBlock Text="CATEGORIAS" Style="{StaticResource SectionLabel}" />
+                                <ItemsControl ItemsSource="{Binding CategoryFilters}" ItemTemplate="{StaticResource NavTemplate}" />
+                            </StackPanel>
+                        </ScrollViewer>
+                    </DockPanel>
+                </Border>
+
+                <!-- ===== ÁREA PRINCIPAL ===== -->
+                <Grid Grid.Column="1">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+
+                    <!-- toolbar -->
+                    <Grid Grid.Row="0" Margin="26,14,26,6">
+                        <StackPanel Orientation="Horizontal">
+                            <Button Style="{StaticResource PrimaryButton}" Command="{Binding AddDownloadCommand}"
+                                    ToolTip="Novo download (Ctrl+N)" AutomationProperties.Name="Novo download">
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock Style="{StaticResource Icon}" Text="&#xE710;" FontSize="14" Margin="0,0,9,0" />
+                                    <TextBlock Text="Novo download" />
+                                </StackPanel>
+                            </Button>
+                            <Button Command="{Binding ResumeAllCommand}" Margin="10,0,0,0" AutomationProperties.Name="Retomar todos" ToolTip="Retomar todos os pausados e com falha">
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock Style="{StaticResource Icon}" Text="&#xE768;" FontSize="13" Margin="0,0,8,0" />
+                                    <TextBlock Text="Retomar todos" />
+                                </StackPanel>
+                            </Button>
+                            <Button Command="{Binding PauseAllCommand}" Margin="8,0,0,0" AutomationProperties.Name="Pausar todos" ToolTip="Pausar todos os downloads">
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock Style="{StaticResource Icon}" Text="&#xE769;" FontSize="13" Margin="0,0,8,0" />
+                                    <TextBlock Text="Pausar todos" />
+                                </StackPanel>
+                            </Button>
+                            <Button Command="{Binding OpenBypassCommand}" Margin="8,0,0,0" ToolTip="Decifrar link encurtado / safelink (Ctrl+B)"
+                                    AutomationProperties.Name="Decifrar link">
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock Style="{StaticResource Icon}" Text="&#xE945;" FontSize="13" Margin="0,0,8,0" Foreground="{StaticResource Accent2Brush}" />
+                                    <TextBlock Text="Decifrar link" />
+                                </StackPanel>
+                            </Button>
+                            <Button Style="{StaticResource GhostButton}" Command="{Binding ClearCompletedCommand}"
+                                    Margin="8,0,0,0" ToolTip="Remover concluídos da lista">
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock Style="{StaticResource Icon}" Text="&#xE894;" FontSize="13" Margin="0,0,8,0" />
+                                    <TextBlock Text="Limpar concluídos" />
+                                </StackPanel>
+                            </Button>
+                        </StackPanel>
+
+                        <Grid HorizontalAlignment="Right" Width="270">
+                            <TextBox Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged}"
+                                     Tag="Buscar downloads…" Padding="36,9,12,9" />
+                            <TextBlock Style="{StaticResource Icon}" Text="&#xE721;" FontSize="14"
+                                       Foreground="{StaticResource MutedBrush}" HorizontalAlignment="Left"
+                                       Margin="13,0,0,0" IsHitTestVisible="False" />
+                        </Grid>
+                    </Grid>
+
+                    <!-- cabeçalho da lista -->
+                    <Grid Grid.Row="1" Margin="26,10,26,10">
+                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                            <TextBlock Text="{Binding FilterTitle}" FontSize="20" FontWeight="Bold" />
+                            <TextBlock Text="{Binding VisibleCountText}" Foreground="{StaticResource MutedBrush}"
+                                       FontSize="13" Margin="12,0,0,0" VerticalAlignment="Bottom" Padding="0,0,0,3" />
+                        </StackPanel>
+                        <TextBlock Text="{Binding StatusBarText}" Foreground="{StaticResource MutedStrongBrush}"
+                                   FontSize="12" HorizontalAlignment="Right" VerticalAlignment="Center" />
+                    </Grid>
+
+                    <!-- lista -->
+                    <Grid Grid.Row="2">
+                        <ListBox x:Name="List" Style="{StaticResource CardList}" ItemsSource="{Binding ItemsView}"
+                                 SelectedItem="{Binding SelectedItem}" ItemTemplate="{StaticResource DownloadCard}"
+                                 Padding="26,0,26,4" PreviewMouseRightButtonDown="List_PreviewMouseRightButtonDown"
+                                 MouseDoubleClick="List_MouseDoubleClick" />
+
+                        <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center"
+                                    Visibility="{Binding IsEmpty, Converter={StaticResource BoolToVis}}"
+                                    IsHitTestVisible="False" Margin="0,0,0,40">
+                            <Border Width="100" Height="100" CornerRadius="30" Background="{StaticResource Surface2Brush}"
+                                    BorderBrush="{StaticResource BorderBrush}" BorderThickness="1">
+                                <TextBlock Style="{StaticResource Icon}" Text="&#xE896;" FontSize="40"
+                                           Foreground="{StaticResource MutedStrongBrush}" />
+                            </Border>
+                            <TextBlock Text="Nenhum download por aqui" FontSize="17" FontWeight="SemiBold"
+                                       HorizontalAlignment="Center" Margin="0,20,0,6" />
+                            <TextBlock Text="Cole um link (Ctrl+V), arraste-o para esta janela ou clique em Novo download."
+                                       Foreground="{StaticResource MutedBrush}" HorizontalAlignment="Center"
+                                       TextAlignment="Center" TextWrapping="Wrap" MaxWidth="360" />
+                        </StackPanel>
+                    </Grid>
+
+                    <!-- painel de detalhes -->
+                    <Grid Grid.Row="3" Visibility="{Binding HasSelection, Converter={StaticResource BoolToVis}}">
+                        <Border Style="{StaticResource Panel}" Margin="26,4,26,10" Padding="20,16"
+                                DataContext="{Binding SelectedItem}">
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="300" />
+                                </Grid.ColumnDefinitions>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                </Grid.RowDefinitions>
+
+                                <!-- cabeçalho -->
+                                <Grid Grid.Row="0" Grid.ColumnSpan="2" Margin="0,0,0,12">
+                                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                        <TextBlock Style="{StaticResource Icon}" Text="{Binding IconGlyph}" FontSize="16"
+                                                   Foreground="{StaticResource Accent2Brush}" Margin="0,0,10,0" />
+                                        <TextBlock Text="{Binding FileName}" FontSize="15" FontWeight="SemiBold"
+                                                   TextTrimming="CharacterEllipsis" MaxWidth="520" VerticalAlignment="Center" />
+                                        <Border Style="{StaticResource StatusPill}" Margin="12,0,0,0">
+                                            <TextBlock Style="{StaticResource StatusPillText}" Text="{Binding StatusText}" />
+                                        </Border>
+                                        <TextBlock Text="{Binding Category}" Foreground="{StaticResource MutedBrush}" FontSize="12"
+                                                   Margin="12,0,0,0" VerticalAlignment="Center" />
+                                    </StackPanel>
+                                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                                        <Button Command="{Binding ToggleCommand}" IsEnabled="{Binding CanToggle}" Padding="12,6"
+                                                Visibility="{Binding IsCompleted, Converter={StaticResource InvBoolToVis}}">
+                                            <StackPanel Orientation="Horizontal">
+                                                <TextBlock Style="{StaticResource Icon}" Text="{Binding ToggleGlyph}" FontSize="12" Margin="0,0,8,0" />
+                                                <TextBlock Text="{Binding ToggleLabel}" FontSize="12" />
+                                            </StackPanel>
+                                        </Button>
+                                        <Button Command="{Binding OpenFileCommand}" Padding="12,6" Margin="8,0,0,0"
+                                                Visibility="{Binding IsCompleted, Converter={StaticResource BoolToVis}}">
+                                            <StackPanel Orientation="Horizontal">
+                                                <TextBlock Style="{StaticResource Icon}" Text="&#xE8E5;" FontSize="12" Margin="0,0,8,0" />
+                                                <TextBlock Text="Abrir" FontSize="12" />
+                                            </StackPanel>
+                                        </Button>
+                                        <Button Style="{StaticResource IconButton}" Command="{Binding OpenFolderCommand}"
+                                                ToolTip="Abrir pasta" Margin="4,0,0,0">
+                                            <TextBlock Style="{StaticResource Icon}" Text="&#xE8B7;" FontSize="14" />
+                                        </Button>
+                                        <Button Style="{StaticResource IconButton}" ToolTip="Fechar detalhes (Esc)"
+                                                Command="{Binding DataContext.CloseDetailsCommand, RelativeSource={RelativeSource AncestorType=Window}}">
+                                            <TextBlock Style="{StaticResource Icon}" Text="&#xE8BB;" FontSize="11" />
+                                        </Button>
+                                    </StackPanel>
+                                </Grid>
+
+                                <!-- url / caminho -->
+                                <StackPanel Grid.Row="1" Grid.Column="0" Margin="0,0,20,12">
+                                    <Grid Margin="0,0,0,6">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="20" />
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="Auto" />
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock Style="{StaticResource Icon}" Text="&#xE71B;" FontSize="12"
+                                                   Foreground="{StaticResource MutedStrongBrush}" HorizontalAlignment="Left" />
+                                        <TextBlock Grid.Column="1" Text="{Binding Url}" Foreground="{StaticResource MutedBrush}"
+                                                   FontSize="12" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
+                                        <Button Grid.Column="2" Style="{StaticResource GhostButton}" Command="{Binding CopyUrlCommand}"
+                                                Padding="8,3" Margin="8,0,0,0" ToolTip="Copiar link">
+                                            <TextBlock Style="{StaticResource Icon}" Text="&#xE8C8;" FontSize="12" />
+                                        </Button>
+                                    </Grid>
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="20" />
+                                            <ColumnDefinition Width="*" />
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock Style="{StaticResource Icon}" Text="&#xE8B7;" FontSize="12"
+                                                   Foreground="{StaticResource MutedStrongBrush}" HorizontalAlignment="Left" />
+                                        <TextBlock Grid.Column="1" Text="{Binding FullPath}" Foreground="{StaticResource MutedBrush}"
+                                                   FontSize="12" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
+                                    </Grid>
+                                    <TextBlock Text="{Binding ErrorText}" Foreground="{StaticResource DangerBrush}" FontSize="12"
+                                               TextWrapping="Wrap" Margin="0,8,0,0"
+                                               Visibility="{Binding ErrorText, Converter={StaticResource NullToVis}}" />
+                                </StackPanel>
+
+                                <!-- estatísticas -->
+                                <UniformGrid Grid.Row="2" Grid.Column="0" Columns="6" Margin="0,0,20,14">
+                                    <StackPanel>
+                                        <TextBlock Text="TAMANHO" Style="{StaticResource StatLabel}" />
+                                        <TextBlock Text="{Binding SizeText}" Style="{StaticResource StatValue}" />
+                                    </StackPanel>
+                                    <StackPanel>
+                                        <TextBlock Text="BAIXADO" Style="{StaticResource StatLabel}" />
+                                        <TextBlock Text="{Binding DownloadedText}" Style="{StaticResource StatValue}" />
+                                    </StackPanel>
+                                    <StackPanel>
+                                        <TextBlock Text="VELOCIDADE" Style="{StaticResource StatLabel}" />
+                                        <TextBlock Text="{Binding SpeedText}" Style="{StaticResource StatValue}"
+                                                   Foreground="{StaticResource Accent2Brush}" />
+                                    </StackPanel>
+                                    <StackPanel>
+                                        <TextBlock Text="MÉDIA" Style="{StaticResource StatLabel}" />
+                                        <TextBlock Text="{Binding AverageSpeedText}" Style="{StaticResource StatValue}" />
+                                    </StackPanel>
+                                    <StackPanel>
+                                        <TextBlock Text="CONEXÕES" Style="{StaticResource StatLabel}" />
+                                        <TextBlock Text="{Binding ConnectionsText}" Style="{StaticResource StatValue}" />
+                                    </StackPanel>
+                                    <StackPanel>
+                                        <TextBlock Text="RESTANTE" Style="{StaticResource StatLabel}" />
+                                        <TextBlock Text="{Binding RemainingText}" Style="{StaticResource StatValue}" />
+                                    </StackPanel>
+                                    <StackPanel Margin="0,10,0,0">
+                                        <TextBlock Text="RETOMÁVEL" Style="{StaticResource StatLabel}" />
+                                        <TextBlock Text="{Binding ResumeText}" Style="{StaticResource StatValue}" />
+                                    </StackPanel>
+                                    <StackPanel Margin="0,10,0,0">
+                                        <TextBlock Text="TEMPO ATIVO" Style="{StaticResource StatLabel}" />
+                                        <TextBlock Text="{Binding ElapsedText}" Style="{StaticResource StatValue}" />
+                                    </StackPanel>
+                                    <StackPanel Margin="0,10,0,0">
+                                        <TextBlock Text="RECONEXÕES" Style="{StaticResource StatLabel}" />
+                                        <TextBlock Text="{Binding RetriesText}" Style="{StaticResource StatValue}" />
+                                    </StackPanel>
+                                    <StackPanel Margin="0,10,0,0">
+                                        <TextBlock Text="ADICIONADO" Style="{StaticResource StatLabel}" />
+                                        <TextBlock Text="{Binding CreatedText}" Style="{StaticResource StatValue}" />
+                                    </StackPanel>
+                                    <StackPanel Margin="0,10,0,0">
+                                        <TextBlock Text="HASH" Style="{StaticResource StatLabel}" />
+                                        <TextBlock Text="{Binding HashText}" Style="{StaticResource StatValue}" FontSize="11"
+                                                   FontFamily="{StaticResource MonoFont}" ToolTip="{Binding HashText}" />
+                                    </StackPanel>
+                                </UniformGrid>
+
+                                <!-- mapa de segmentos -->
+                                <StackPanel Grid.Row="3" Grid.Column="0" Margin="0,0,20,0">
+                                    <Grid Margin="0,0,0,6">
+                                        <TextBlock Text="SEGMENTOS" Style="{StaticResource StatLabel}" />
+                                        <TextBlock Text="{Binding SegmentsText}" Style="{StaticResource StatLabel}" HorizontalAlignment="Right" />
+                                    </Grid>
+                                    <controls:SegmentBar Height="14" Radius="5" ShowDividers="True"
+                                                         Segments="{Binding Segments}" TotalSize="{Binding TotalSize}"
+                                                         Progress="{Binding Progress}" IsIndeterminate="{Binding IsIndeterminate}"
+                                                         TrackBrush="{StaticResource Surface3Brush}"
+                                                         FillBrush="{StaticResource AccentBrush}"
+                                                         ActiveBrush="{StaticResource Accent2Brush}"
+                                                         CompletedBrush="{StaticResource SuccessBrush}" />
+                                    <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
+                                        <Border Width="10" Height="10" CornerRadius="3" Background="{StaticResource Accent2Brush}" VerticalAlignment="Center" />
+                                        <TextBlock Text="conexão ativa" Style="{StaticResource Muted}" FontSize="11" Margin="6,0,14,0" VerticalAlignment="Center" />
+                                        <Border Width="10" Height="10" CornerRadius="3" Background="{StaticResource AccentBrush}" VerticalAlignment="Center" />
+                                        <TextBlock Text="baixado" Style="{StaticResource Muted}" FontSize="11" Margin="6,0,14,0" VerticalAlignment="Center" />
+                                        <Border Width="10" Height="10" CornerRadius="3" Background="{StaticResource SuccessBrush}" VerticalAlignment="Center" />
+                                        <TextBlock Text="concluído" Style="{StaticResource Muted}" FontSize="11" Margin="6,0,0,0" VerticalAlignment="Center" />
+                                    </StackPanel>
+                                </StackPanel>
+
+                                <!-- gráfico -->
+                                <Border Grid.Row="1" Grid.RowSpan="3" Grid.Column="1" Background="{StaticResource Surface2Brush}"
+                                        BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="12" Padding="14,12">
+                                    <DockPanel>
+                                        <Grid DockPanel.Dock="Top" Margin="0,0,0,8">
+                                            <TextBlock Text="VELOCIDADE · 60 s" Style="{StaticResource StatLabel}" />
+                                            <TextBlock Text="{Binding SpeedText}" Style="{StaticResource StatLabel}" HorizontalAlignment="Right"
+                                                       Foreground="{StaticResource Accent2Brush}" />
+                                        </Grid>
+                                        <controls:SpeedGraph Values="{Binding SpeedHistory}" Fill="{StaticResource GraphFill}"
+                                                             Stroke="{StaticResource Accent2Brush}" MinHeight="90" />
+                                    </DockPanel>
+                                </Border>
+                            </Grid>
+                        </Border>
+                    </Grid>
+
+                    <!-- toasts -->
+                    <ItemsControl Grid.Row="1" Grid.RowSpan="3" ItemsSource="{Binding Toasts}" HorizontalAlignment="Right"
+                                  VerticalAlignment="Top" Margin="0,4,30,0" Width="360">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate DataType="{x:Type vm:ToastItem}">
+                                <Border x:Name="T" Background="{StaticResource Surface3Brush}" BorderBrush="{StaticResource BorderStrongBrush}"
+                                        BorderThickness="1" CornerRadius="12" Padding="14,12" Margin="0,0,0,8" RenderTransformOrigin="1,0">
+                                    <Border.RenderTransform>
+                                        <TranslateTransform x:Name="Tx" X="40" />
+                                    </Border.RenderTransform>
+                                    <Border.Effect>
+                                        <DropShadowEffect BlurRadius="22" ShadowDepth="4" Opacity="0.55" Color="Black" />
+                                    </Border.Effect>
+                                    <Border.Triggers>
+                                        <EventTrigger RoutedEvent="Loaded">
+                                            <BeginStoryboard>
+                                                <Storyboard>
+                                                    <DoubleAnimation Storyboard.TargetName="Tx" Storyboard.TargetProperty="X" From="40" To="0" Duration="0:0:0.25">
+                                                        <DoubleAnimation.EasingFunction>
+                                                            <CubicEase EasingMode="EaseOut" />
+                                                        </DoubleAnimation.EasingFunction>
+                                                    </DoubleAnimation>
+                                                    <DoubleAnimation Storyboard.TargetProperty="Opacity" From="0" To="1" Duration="0:0:0.25" />
+                                                </Storyboard>
+                                            </BeginStoryboard>
+                                        </EventTrigger>
+                                    </Border.Triggers>
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="Auto" />
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="Auto" />
+                                        </Grid.ColumnDefinitions>
+                                        <Border x:Name="IconBg" Width="32" Height="32" CornerRadius="9" Background="{StaticResource AccentSoftBrush}" VerticalAlignment="Top">
+                                            <TextBlock x:Name="IconTb" Style="{StaticResource Icon}" Text="{Binding Glyph}" FontSize="14"
+                                                       Foreground="{StaticResource AccentBrush}" />
+                                        </Border>
+                                        <StackPanel Grid.Column="1" Margin="12,0,8,0" VerticalAlignment="Center">
+                                            <TextBlock Text="{Binding Title}" FontWeight="SemiBold" FontSize="13" />
+                                            <TextBlock Text="{Binding Message}" Foreground="{StaticResource MutedBrush}" FontSize="12"
+                                                       TextWrapping="Wrap" TextTrimming="CharacterEllipsis" MaxHeight="52" Margin="0,2,0,0" />
+                                        </StackPanel>
+                                        <Button Grid.Column="2" Style="{StaticResource IconButton}" Width="26" Height="26"
+                                                Command="{Binding CloseCommand}" VerticalAlignment="Top">
+                                            <TextBlock Style="{StaticResource Icon}" Text="&#xE8BB;" FontSize="9" />
+                                        </Button>
+                                    </Grid>
+                                </Border>
+                                <DataTemplate.Triggers>
+                                    <DataTrigger Binding="{Binding Kind}" Value="success">
+                                        <Setter TargetName="IconBg" Property="Background" Value="{StaticResource SuccessSoftBrush}" />
+                                        <Setter TargetName="IconTb" Property="Foreground" Value="{StaticResource SuccessBrush}" />
+                                    </DataTrigger>
+                                    <DataTrigger Binding="{Binding Kind}" Value="error">
+                                        <Setter TargetName="IconBg" Property="Background" Value="{StaticResource DangerSoftBrush}" />
+                                        <Setter TargetName="IconTb" Property="Foreground" Value="{StaticResource DangerBrush}" />
+                                    </DataTrigger>
+                                </DataTemplate.Triggers>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+
+                    <!-- overlay de arrastar -->
+                    <Border x:Name="DropOverlay" Grid.Row="0" Grid.RowSpan="5" Background="#CC0A0C13" Visibility="Collapsed"
+                            IsHitTestVisible="False">
+                        <Border BorderBrush="{StaticResource AccentBrush}" BorderThickness="2" CornerRadius="18" Margin="30"
+                                Background="{StaticResource AccentSoftBrush}">
+                            <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center">
+                                <TextBlock Style="{StaticResource Icon}" Text="&#xE896;" FontSize="48" Foreground="{StaticResource Accent2Brush}" />
+                                <TextBlock Text="Solte o link para baixar" FontSize="18" FontWeight="SemiBold" Margin="0,14,0,0" HorizontalAlignment="Center" />
+                            </StackPanel>
+                        </Border>
+                    </Border>
+                </Grid>
+            </Grid>
+        </Grid>
+    </Border>
+</Window>

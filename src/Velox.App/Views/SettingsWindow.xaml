@@ -1,0 +1,280 @@
+<Window x:Class="Velox.App.Views.SettingsWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="clr-namespace:Velox.App.ViewModels"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        mc:Ignorable="d" d:DataContext="{d:DesignInstance Type=vm:SettingsViewModel}"
+        Title="Configurações" Width="760" Height="900"
+        WindowStartupLocation="CenterOwner" WindowStyle="None" ResizeMode="NoResize"
+        Background="{StaticResource SurfaceBrush}" Foreground="{StaticResource TextBrush}"
+        FontFamily="{StaticResource UiFont}" FontSize="13" ShowInTaskbar="False"
+        TextOptions.TextFormattingMode="Ideal" UseLayoutRounding="True">
+
+    <WindowChrome.WindowChrome>
+        <WindowChrome CaptionHeight="48" ResizeBorderThickness="0" GlassFrameThickness="0" CornerRadius="0"
+                      UseAeroCaptionButtons="False" />
+    </WindowChrome.WindowChrome>
+
+    <Window.InputBindings>
+        <KeyBinding Key="Escape" Command="{Binding CancelCommand}" />
+    </Window.InputBindings>
+
+    <Window.Resources>
+        <Style x:Key="Section" TargetType="TextBlock" BasedOn="{StaticResource {x:Type TextBlock}}">
+            <Setter Property="FontSize" Value="11" />
+            <Setter Property="FontWeight" Value="Bold" />
+            <Setter Property="Foreground" Value="{StaticResource Accent2Brush}" />
+            <Setter Property="Margin" Value="0,18,0,10" />
+        </Style>
+        <Style x:Key="Row" TargetType="Grid">
+            <Setter Property="Margin" Value="0,0,0,12" />
+        </Style>
+        <Style x:Key="Hint" TargetType="TextBlock" BasedOn="{StaticResource Muted}">
+            <Setter Property="FontSize" Value="11.5" />
+            <Setter Property="Margin" Value="0,3,0,0" />
+            <Setter Property="TextWrapping" Value="Wrap" />
+        </Style>
+    </Window.Resources>
+
+    <Border BorderBrush="{StaticResource BorderStrongBrush}" BorderThickness="1">
+        <Grid>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="48" />
+                <RowDefinition Height="*" />
+                <RowDefinition Height="Auto" />
+            </Grid.RowDefinitions>
+
+            <Grid Grid.Row="0">
+                <StackPanel Orientation="Horizontal" Margin="22,0" VerticalAlignment="Center">
+                    <Border Width="26" Height="26" CornerRadius="8" Background="{StaticResource AccentGradient}">
+                        <TextBlock Style="{StaticResource Icon}" Text="&#xE713;" FontSize="13" Foreground="White" />
+                    </Border>
+                    <TextBlock Text="Configurações" FontSize="15" FontWeight="SemiBold" Margin="12,0,0,0" VerticalAlignment="Center" />
+                </StackPanel>
+                <Button Style="{StaticResource TitleBarButton}" Command="{Binding CancelCommand}" HorizontalAlignment="Right"
+                        Margin="0,0,8,0" WindowChrome.IsHitTestVisibleInChrome="True">
+                    <TextBlock Style="{StaticResource Icon}" FontSize="10" Text="&#xE8BB;" />
+                </Button>
+            </Grid>
+
+            <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" Padding="22,0,22,10">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="28" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+
+                    <!-- ===== coluna esquerda ===== -->
+                    <StackPanel Grid.Column="0" Grid.Row="1">
+                        <TextBlock Text="GERAL" Style="{StaticResource Section}" Margin="0,10,0,10" />
+
+                        <StackPanel Margin="0,0,0,12">
+                            <TextBlock Text="Pasta padrão de downloads" Style="{StaticResource FieldLabel}" />
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <TextBox Text="{Binding DownloadDirectory, UpdateSourceTrigger=PropertyChanged}" FontSize="12" />
+                                <Button Grid.Column="1" Command="{Binding BrowseCommand}" Margin="6,0,0,0" Padding="10,0" ToolTip="Escolher pasta">
+                                    <TextBlock Style="{StaticResource Icon}" Text="&#xE8B7;" FontSize="13" />
+                                </Button>
+                            </Grid>
+                        </StackPanel>
+
+                        <CheckBox IsChecked="{Binding OrganizeByCategory}" Content="Organizar em subpastas por categoria" Margin="0,0,0,12" />
+                        <CheckBox IsChecked="{Binding StartImmediately}" Content="Iniciar downloads imediatamente ao adicionar" Margin="0,0,0,12" />
+                        <CheckBox IsChecked="{Binding AutoResume}" Content="Retomar downloads ao abrir o programa" Margin="0,0,0,12" />
+                        <CheckBox IsChecked="{Binding VerifyHash}" Content="Calcular SHA-256 ao concluir" Margin="0,0,0,12" />
+                        <CheckBox IsChecked="{Binding AutoResolveShortLinks}" Content="Decifrar links encurtados automaticamente ao adicionar" Margin="0,0,0,12" />
+
+                        <TextBlock Text="INTEGRAÇÃO" Style="{StaticResource Section}" />
+                        <CheckBox IsChecked="{Binding MonitorClipboard}" Content="Capturar links copiados (área de transferência)" Margin="0,0,0,12" />
+                        <CheckBox IsChecked="{Binding CaptureAnyUrl}" Content="Capturar qualquer link, não só de arquivos" Margin="0,0,0,12"
+                                  IsEnabled="{Binding MonitorClipboard}" />
+                        <CheckBox IsChecked="{Binding ShowNotifications}" Content="Notificações do Windows ao concluir/falhar" Margin="0,0,0,12" />
+
+                        <TextBlock Text="JANELA" Style="{StaticResource Section}" />
+                        <CheckBox IsChecked="{Binding CloseToTray}" Content="Fechar minimiza para a bandeja" Margin="0,0,0,12" />
+                        <CheckBox IsChecked="{Binding MinimizeToTray}" Content="Minimizar esconde para a bandeja" Margin="0,0,0,12" />
+                        <CheckBox IsChecked="{Binding StartWithWindows}" Content="Iniciar com o Windows" Margin="0,0,0,12" />
+                        <CheckBox IsChecked="{Binding StartMinimized}" Content="Iniciar minimizado na bandeja" Margin="0,0,0,12" />
+                    </StackPanel>
+
+                    <!-- ===== coluna direita ===== -->
+                    <StackPanel Grid.Column="2" Grid.Row="1">
+                        <TextBlock Text="CONEXÃO" Style="{StaticResource Section}" Margin="0,10,0,10" />
+
+                        <StackPanel Margin="0,0,0,14">
+                            <Grid>
+                                <TextBlock Text="Downloads simultâneos" Style="{StaticResource FieldLabel}" />
+                                <TextBlock Text="{Binding MaxConcurrentText}" Style="{StaticResource Muted}" FontWeight="SemiBold"
+                                           Foreground="{StaticResource Accent2Brush}" HorizontalAlignment="Right" />
+                            </Grid>
+                            <Slider Minimum="1" Maximum="10" Value="{Binding MaxConcurrent}" IsSnapToTickEnabled="True" TickFrequency="1" />
+                        </StackPanel>
+
+                        <StackPanel Margin="0,0,0,14">
+                            <Grid>
+                                <TextBlock Text="Conexões por download" Style="{StaticResource FieldLabel}" />
+                                <TextBlock Text="{Binding ConnectionsText}" Style="{StaticResource Muted}" FontWeight="SemiBold"
+                                           Foreground="{StaticResource Accent2Brush}" HorizontalAlignment="Right" />
+                            </Grid>
+                            <Slider Minimum="1" Maximum="64" Value="{Binding Connections}" IsSnapToTickEnabled="True" TickFrequency="1" />
+                            <TextBlock Style="{StaticResource Hint}"
+                                       Text="Mais conexões aproveitam melhor a banda em servidores que limitam por conexão. 16 a 32 é o ideal para a maioria." />
+                        </StackPanel>
+
+                        <StackPanel Margin="0,0,0,14">
+                            <CheckBox IsChecked="{Binding SpeedLimitEnabled}" Content="Limitar velocidade total" Margin="0,0,0,8" />
+                            <Grid IsEnabled="{Binding SpeedLimitEnabled}">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="140" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <TextBox Text="{Binding SpeedLimitKb, UpdateSourceTrigger=PropertyChanged}" Padding="12,8,44,8" />
+                                <TextBlock Text="KB/s" Style="{StaticResource Muted}" HorizontalAlignment="Right" VerticalAlignment="Center"
+                                           Margin="0,0,12,0" IsHitTestVisible="False" />
+                                <TextBlock Grid.Column="1" Text="{Binding SpeedLimitPreview}" Style="{StaticResource Muted}" VerticalAlignment="Center"
+                                           Margin="10,0,0,0" />
+                            </Grid>
+                        </StackPanel>
+
+                        <TextBlock Text="RESILIÊNCIA" Style="{StaticResource Section}" />
+
+                        <StackPanel Margin="0,0,0,14">
+                            <Grid>
+                                <TextBlock Text="Tempo limite de leitura" Style="{StaticResource FieldLabel}" />
+                                <TextBlock Text="{Binding ReadTimeoutText}" Style="{StaticResource Muted}" FontWeight="SemiBold"
+                                           Foreground="{StaticResource Accent2Brush}" HorizontalAlignment="Right" />
+                            </Grid>
+                            <Slider Minimum="5" Maximum="120" Value="{Binding ReadTimeout}" IsSnapToTickEnabled="True" TickFrequency="5" />
+                        </StackPanel>
+
+                        <StackPanel Margin="0,0,0,14">
+                            <Grid>
+                                <TextBlock Text="Retentativas por conexão" Style="{StaticResource FieldLabel}" />
+                                <TextBlock Text="{Binding MaxRetriesPerSegmentText}" Style="{StaticResource Muted}" FontWeight="SemiBold"
+                                           Foreground="{StaticResource Accent2Brush}" HorizontalAlignment="Right" />
+                            </Grid>
+                            <Slider Minimum="1" Maximum="50" Value="{Binding MaxRetriesPerSegment}" IsSnapToTickEnabled="True" TickFrequency="1" />
+                            <TextBlock Style="{StaticResource Hint}" Text="Cada conexão tenta reconectar com espera crescente (até 30 s) antes de desistir." />
+                        </StackPanel>
+
+                        <StackPanel Margin="0,0,0,14">
+                            <CheckBox IsChecked="{Binding AutoRetry}" Content="Reagendar downloads que falharem" Margin="0,0,0,8" />
+                            <Grid IsEnabled="{Binding AutoRetry}">
+                                <TextBlock Text="{Binding MaxAutoRetriesText}" Style="{StaticResource Muted}" FontWeight="SemiBold"
+                                           Foreground="{StaticResource Accent2Brush}" HorizontalAlignment="Right" />
+                            </Grid>
+                            <Slider Minimum="1" Maximum="20" Value="{Binding MaxAutoRetries}" IsSnapToTickEnabled="True" TickFrequency="1"
+                                    IsEnabled="{Binding AutoRetry}" />
+                        </StackPanel>
+
+                        <TextBlock Text="REDE" Style="{StaticResource Section}" />
+                        <StackPanel Margin="0,0,0,12">
+                            <Grid>
+                                <TextBlock Text="User-Agent" Style="{StaticResource FieldLabel}" />
+                                <Button Style="{StaticResource GhostButton}" Command="{Binding ResetUserAgentCommand}" Content="padrão"
+                                        HorizontalAlignment="Right" Padding="8,2" FontSize="11" />
+                            </Grid>
+                            <TextBox Text="{Binding UserAgent, UpdateSourceTrigger=PropertyChanged}" FontSize="11.5" />
+                        </StackPanel>
+                        <StackPanel Margin="0,0,0,12">
+                            <TextBlock Text="Proxy (opcional)" Style="{StaticResource FieldLabel}" />
+                            <TextBox Text="{Binding ProxyUrl, UpdateSourceTrigger=PropertyChanged}" Tag="http://usuario:senha@host:porta" FontSize="12" />
+                        </StackPanel>
+                    </StackPanel>
+
+                    <!-- ===== navegador ===== -->
+                    <Border Grid.Row="0" Grid.ColumnSpan="3" Margin="0,6,0,6" Background="{StaticResource Surface2Brush}"
+                            BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="12" Padding="16,14">
+                        <StackPanel>
+                            <Grid Margin="0,0,0,10">
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock Style="{StaticResource Icon}" Text="&#xE774;" FontSize="14" Foreground="{StaticResource Accent2Brush}" Margin="0,0,8,0" />
+                                    <TextBlock Text="NAVEGADOR — CHROME / EDGE" Style="{StaticResource Section}" Margin="0" VerticalAlignment="Center" />
+                                </StackPanel>
+                                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                                    <Border Width="8" Height="8" CornerRadius="4" VerticalAlignment="Center" Margin="0,0,6,0">
+                                        <Border.Style>
+                                            <Style TargetType="Border">
+                                                <Setter Property="Background" Value="{StaticResource WarningBrush}" />
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding IntegrationRegistered}" Value="True">
+                                                        <Setter Property="Background" Value="{StaticResource SuccessBrush}" />
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </Border.Style>
+                                    </Border>
+                                    <TextBlock Text="{Binding IntegrationStatus}" Style="{StaticResource Muted}" FontSize="11.5" VerticalAlignment="Center" MaxWidth="420" TextTrimming="CharacterEllipsis" ToolTip="{Binding IntegrationStatus}" />
+                                </StackPanel>
+                            </Grid>
+
+                            <TextBlock Style="{StaticResource Hint}" Margin="0,0,0,10"
+                                       Text="Com a extensão instalada, todo download iniciado no navegador é desviado para o Velox (com os cookies da sua sessão), como no IDM e no JDownloader. Clique com o botão direito em qualquer link para 'Baixar com Velox'." />
+
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="16" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <StackPanel Grid.Column="0">
+                                    <TextBlock Text="1. Registrar o Velox no navegador" Style="{StaticResource FieldLabel}" />
+                                    <Button Command="{Binding InstallIntegrationCommand}" HorizontalAlignment="Left" Padding="12,7">
+                                        <StackPanel Orientation="Horizontal">
+                                            <TextBlock Style="{StaticResource Icon}" Text="&#xE73E;" FontSize="12" Margin="0,0,8,0" />
+                                            <TextBlock Text="Instalar / reparar integração" FontSize="12" />
+                                        </StackPanel>
+                                    </Button>
+                                    <TextBlock Style="{StaticResource Hint}" Text="Grava o manifesto do host nativo e as chaves em HKCU (sem administrador). Refeito automaticamente a cada abertura do Velox." />
+
+                                    <TextBlock Text="3. Comportamento" Style="{StaticResource FieldLabel}" Margin="2,14,0,6" />
+                                    <CheckBox IsChecked="{Binding BrowserAskBeforeDownload}" Content="Perguntar antes de baixar (mostra o diálogo)" FontSize="12.5" />
+                                    <TextBlock Style="{StaticResource Hint}" Text="Desligado: o download entra na fila imediatamente, só com uma notificação." />
+                                </StackPanel>
+                                <StackPanel Grid.Column="2">
+                                    <TextBlock Text="2. Carregar a extensão (uma vez por navegador)" Style="{StaticResource FieldLabel}" />
+                                    <TextBlock Style="{StaticResource Hint}" Margin="0,0,0,8"
+                                               Text="Abra chrome://extensions, ative o 'Modo do desenvolvedor' (canto superior direito), clique em 'Carregar sem compactação' e escolha a pasta abaixo." />
+                                    <TextBox Text="{Binding ExtensionPath, Mode=OneWay}" IsReadOnly="True" FontSize="11.5" Padding="10,7" Margin="0,0,0,8" />
+                                    <WrapPanel>
+                                        <Button Command="{Binding OpenExtensionFolderCommand}" Padding="10,6" Margin="0,0,6,6">
+                                            <StackPanel Orientation="Horizontal">
+                                                <TextBlock Style="{StaticResource Icon}" Text="&#xE8B7;" FontSize="12" Margin="0,0,7,0" />
+                                                <TextBlock Text="Abrir pasta" FontSize="12" />
+                                            </StackPanel>
+                                        </Button>
+                                        <Button Command="{Binding OpenChromeExtensionsCommand}" Content="chrome://extensions" Padding="10,6" Margin="0,0,6,6" FontSize="12" />
+                                        <Button Command="{Binding OpenEdgeExtensionsCommand}" Content="edge://extensions" Padding="10,6" Margin="0,0,6,6" FontSize="12" />
+                                    </WrapPanel>
+                                </StackPanel>
+                            </Grid>
+                        </StackPanel>
+                    </Border>
+                </Grid>
+            </ScrollViewer>
+
+            <Border Grid.Row="2" Background="{StaticResource Surface2Brush}" BorderBrush="{StaticResource BorderBrush}"
+                    BorderThickness="0,1,0,0" Padding="22,14">
+                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                    <Button Content="Cancelar" Command="{Binding CancelCommand}" Style="{StaticResource GhostButton}" Padding="16,9" />
+                    <Button Style="{StaticResource PrimaryButton}" Command="{Binding SaveCommand}" Margin="10,0,0,0" MinWidth="120" AutomationProperties.Name="Salvar">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Style="{StaticResource Icon}" Text="&#xE73E;" FontSize="13" Margin="0,0,9,0" />
+                            <TextBlock Text="Salvar" />
+                        </StackPanel>
+                    </Button>
+                </StackPanel>
+            </Border>
+        </Grid>
+    </Border>
+</Window>
