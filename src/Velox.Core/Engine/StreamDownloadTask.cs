@@ -33,17 +33,20 @@ internal sealed class StreamDownloadTask : IDownloadTask
     private DownloadException? _fatal;
     private string _partsDir = "";
     private int _audioOffset;
+    private readonly ToolPaths _tools;
+    private bool _exactTotal;
 
     public DownloadItem Item => _item;
     public Task Completion { get; }
 
-    public StreamDownloadTask(DownloadItem item, HttpClient http, AppSettings settings, BandwidthLimiter limiter, string? ffmpegPath)
+    public StreamDownloadTask(DownloadItem item, HttpClient http, AppSettings settings, BandwidthLimiter limiter, ToolPaths tools)
     {
         _item = item;
         _http = http;
         _settings = settings;
         _limiter = limiter;
-        _ffmpeg = ffmpegPath;
+        _tools = tools;
+        _ffmpeg = tools.Ffmpeg;
         // mantém o progresso anterior visível enquanto o manifesto é rebaixado na retomada
         _done = item.StreamSegmentsDone;
         _bytes = item.DownloadedBytes;
@@ -72,7 +75,7 @@ internal sealed class StreamDownloadTask : IDownloadTask
 
         // estimativa de tamanho total: média dos segmentos concluídos × total
         int done = _item.StreamSegmentsDone;
-        if (done >= 3 && _item.StreamSegmentsTotal > 0 && now > 0)
+        if (!_exactTotal && done >= 3 && _item.StreamSegmentsTotal > 0 && now > 0)
         {
             _item.TotalSize = (long)((double)now / done * _item.StreamSegmentsTotal);
             _item.TotalIsEstimate = true;
@@ -91,12 +94,38 @@ internal sealed class StreamDownloadTask : IDownloadTask
             _item.ErrorMessage = null;
             _item.Note = null;
 
-            var plan = await StreamProbe.BuildPlanAsync(_http, _item, ct).ConfigureAwait(false);
+            StreamPlan plan;
+            if (_item.Kind == StreamKind.Youtube || YoutubeExtractor.IsYoutubeUrl(_item.Url))
+            {
+                if (_tools.YtDlp == null)
+                    throw new DownloadException("Baixar do YouTube precisa do yt-dlp — instale em Configurações → Vídeos em stream.", false);
+                plan = await YoutubeExtractor.BuildPlanAsync(_http, _item, _tools.YtDlp, _tools.JsRuntime, ct).ConfigureAwait(false);
+            }
+            else
+            {
+                plan = await StreamProbe.BuildPlanAsync(_http, _item, ct).ConfigureAwait(false);
+            }
             _item.Kind = plan.Kind;
             _item.VariantLabel ??= plan.Variant.Label;
             _item.VariantId ??= plan.Variant.Id;
+
+            // nome provisório ("youtube-<id>.mp4") → título real, com a extensão do contêiner escolhido
+            if (plan.Title != null && _item.FileName.StartsWith("youtube-", StringComparison.OrdinalIgnoreCase))
+            {
+                Directory.CreateDirectory(_item.Directory);
+                var ext = "." + (plan.VideoContainer is "mp4" or "webm" or "mkv" or "m4a" ? plan.VideoContainer : "mp4");
+                _item.FileName = FileNameHelper.MakeUnique(_item.Directory, FileNameHelper.Sanitize(plan.Title) + ext);
+            }
             _item.StreamSegmentsTotal = plan.Video.Count + plan.Audio.Count;
             _item.SupportsResume = true;
+            // faixas de bytes (YouTube): o total é exato, não uma estimativa
+            var all = plan.Video.Concat(plan.Audio).ToList();
+            if (all.Count > 0 && all.All(s => s.RangeLength is > 0))
+            {
+                _item.TotalSize = all.Sum(s => s.RangeLength!.Value);
+                _item.TotalIsEstimate = false;
+                _exactTotal = true;
+            }
             var states = new byte[_item.StreamSegmentsTotal];
             _audioOffset = plan.Video.Count;
 
@@ -283,6 +312,8 @@ internal sealed class StreamDownloadTask : IDownloadTask
             if (!resp.IsSuccessStatusCode)
             {
                 if (status >= 500 || status == 408 || status == 429) throw new IOException($"Servidor respondeu {status} para um segmento.");
+                if ((status == 403 || status == 401) && _item.Kind == StreamKind.Youtube)
+                    throw new DownloadException("Os links do YouTube expiraram — o download recomeça com links novos (o progresso é mantido).", true);
                 if (status == 403 || status == 401) throw new DownloadException($"Segmento negado ({status}) — o link do stream pode ter expirado. Abra o vídeo de novo e tente novamente.", false);
                 throw new DownloadException($"Servidor respondeu {status} para um segmento.", false);
             }
@@ -361,7 +392,7 @@ internal sealed class StreamDownloadTask : IDownloadTask
 
     private async Task AssembleAsync(StreamPlan plan, CancellationToken ct)
     {
-        string videoExt = plan.VideoContainer == "webm" ? ".webm" : plan.VideoContainer == "mp4" ? ".mp4" : ".ts";
+        string videoExt = plan.VideoContainer is "webm" or "mp4" or "mkv" or "m4a" ? "." + plan.VideoContainer : ".ts";
         var videoOut = Path.Combine(_partsDir, "video" + videoExt);
         await ConcatAsync(plan.Video, "v", videoOut, ct).ConfigureAwait(false);
 
@@ -371,7 +402,9 @@ internal sealed class StreamDownloadTask : IDownloadTask
             var first = plan.Audio.First(s => !s.IsInit);
             var aExt = first.Url.AbsolutePath.EndsWith(".aac", StringComparison.OrdinalIgnoreCase) ? ".aac"
                      : first.Url.AbsolutePath.EndsWith(".ts", StringComparison.OrdinalIgnoreCase) ? ".ts"
-                     : plan.VideoContainer == "webm" ? ".webm" : ".m4a";
+                     : plan.VideoContainer == "webm" ? ".webm"
+                     : plan.Kind == StreamKind.Youtube && plan.Variant.AudioId != null && !plan.Variant.AudioId.StartsWith("14") ? ".webm" // opus (249/250/251) dentro de MKV
+                     : ".m4a";
             audioOut = Path.Combine(_partsDir, "audio" + aExt);
             await ConcatAsync(plan.Audio, "a", audioOut, ct).ConfigureAwait(false);
         }
@@ -379,9 +412,12 @@ internal sealed class StreamDownloadTask : IDownloadTask
         var baseName = Path.GetFileNameWithoutExtension(_item.FileName);
         if (string.IsNullOrWhiteSpace(baseName)) baseName = "video";
 
-        if (_ffmpeg != null)
+        // arquivo já completo (YouTube) e sem áudio separado: não precisa de ffmpeg
+        bool needsFfmpeg = audioOut != null || !plan.IsCompleteFile;
+
+        if (_ffmpeg != null && needsFfmpeg)
         {
-            var finalExt = plan.VideoContainer == "webm" ? ".webm" : ".mp4";
+            var finalExt = plan.VideoContainer is "webm" or "mkv" or "m4a" ? "." + plan.VideoContainer : ".mp4";
             var finalName = FileNameHelper.MakeUnique(_item.Directory, baseName + finalExt);
             var finalPath = Path.Combine(_item.Directory, finalName);
             var tmpOut = Path.Combine(_partsDir, "muxed" + finalExt);
@@ -392,6 +428,7 @@ internal sealed class StreamDownloadTask : IDownloadTask
                 File.Move(tmpOut, finalPath, overwrite: false);
                 _item.FileName = finalName;
                 _item.Note = audioOut != null ? "Vídeo e áudio juntados com ffmpeg" : (videoExt == ".ts" ? "Convertido de TS para MP4 com ffmpeg" : null);
+                if (plan.Kind == StreamKind.Youtube && audioOut != null) _item.Note = $"YouTube · {plan.Variant.Label} · vídeo e áudio juntados com ffmpeg";
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {

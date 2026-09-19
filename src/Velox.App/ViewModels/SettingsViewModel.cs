@@ -45,6 +45,7 @@ public sealed class SettingsViewModel : ObservableObject
         _autoResolve = s.AutoResolveShortLinks;
         _streamConnections = s.StreamConnections;
         _ffmpegPath = s.FfmpegPath ?? "";
+        _ytDlpPath = s.YtDlpPath ?? "";
 
         InstallIntegrationCommand = new RelayCommand(InstallIntegration);
         OpenExtensionFolderCommand = new RelayCommand(Services.BrowserIntegration.OpenExtensionFolder);
@@ -59,6 +60,73 @@ public sealed class SettingsViewModel : ObservableObject
         InstallFfmpegCommand = new AsyncRelayCommand(InstallFfmpegAsync, () => !_ffmpegInstalling);
         BrowseFfmpegCommand = new RelayCommand(BrowseFfmpeg);
         RefreshFfmpegStatus();
+        InstallYtDlpCommand = new AsyncRelayCommand(InstallYtDlpAsync, () => !_ytInstalling);
+        BrowseYtDlpCommand = new RelayCommand(BrowseYtDlp);
+        RefreshYtDlpStatus();
+    }
+
+    // ------------------------------------------------------------ YouTube (yt-dlp)
+    public ICommand InstallYtDlpCommand { get; }
+    public ICommand BrowseYtDlpCommand { get; }
+
+    private string _ytDlpPath;
+    public string YtDlpPath
+    {
+        get => _ytDlpPath;
+        set { if (Set(ref _ytDlpPath, value)) RefreshYtDlpStatus(); }
+    }
+
+    private bool _ytDlpFound;
+    public bool YtDlpFound { get => _ytDlpFound; private set => Set(ref _ytDlpFound, value); }
+
+    private string _ytDlpStatus = "";
+    public string YtDlpStatus { get => _ytDlpStatus; private set => Set(ref _ytDlpStatus, value); }
+
+    private string _jsRuntimeStatus = "";
+    public string JsRuntimeStatus { get => _jsRuntimeStatus; private set => Set(ref _jsRuntimeStatus, value); }
+
+    private bool _ytInstalling;
+    private string _ytProgress = "";
+    public string YtDlpProgress { get => _ytProgress; private set => Set(ref _ytProgress, value); }
+
+    private void RefreshYtDlpStatus()
+    {
+        var path = YoutubeExtractor.LocateYtDlp(_main.DataDirectory, string.IsNullOrWhiteSpace(_ytDlpPath) ? null : _ytDlpPath.Trim());
+        YtDlpFound = path != null;
+        YtDlpStatus = path == null
+            ? (string.IsNullOrWhiteSpace(_ytDlpPath) ? "yt-dlp não encontrado — vídeos do YouTube indisponíveis" : "Arquivo não encontrado no caminho informado")
+            : "yt-dlp: " + path;
+        var rt = YoutubeExtractor.LocateJsRuntime(_main.DataDirectory);
+        JsRuntimeStatus = rt == null
+            ? "Runtime JS: nenhum (o Deno é instalado junto com o yt-dlp)"
+            : $"Runtime JS: {rt.Name} — {rt.Path}";
+    }
+
+    private async Task InstallYtDlpAsync()
+    {
+        _ytInstalling = true;
+        try
+        {
+            YtDlpProgress = "Baixando…";
+            await _main.InstallYoutubeToolsAsync(new Progress<string>(t => YtDlpProgress = t), CancellationToken.None);
+            YtDlpProgress = "";
+            YtDlpPath = "";
+        }
+        catch (Exception ex)
+        {
+            YtDlpProgress = "Falha: " + ex.Message;
+        }
+        finally
+        {
+            _ytInstalling = false;
+            RefreshYtDlpStatus();
+        }
+    }
+
+    private void BrowseYtDlp()
+    {
+        var dlg = new OpenFileDialog { Title = "Escolher yt-dlp.exe", Filter = "yt-dlp|yt-dlp.exe|Executáveis|*.exe", CheckFileExists = true };
+        if (dlg.ShowDialog() == true) YtDlpPath = dlg.FileName;
     }
 
     // ------------------------------------------------------------ streams (HLS/DASH)
@@ -320,6 +388,7 @@ public sealed class SettingsViewModel : ObservableObject
         s.AutoResolveShortLinks = _autoResolve;
         s.StreamConnections = (int)Math.Clamp(_streamConnections, 1, 16);
         s.FfmpegPath = string.IsNullOrWhiteSpace(_ffmpegPath) ? null : _ffmpegPath.Trim();
+        s.YtDlpPath = string.IsNullOrWhiteSpace(_ytDlpPath) ? null : _ytDlpPath.Trim();
 
         ApplyStartup(s.StartWithWindows);
         _main.ApplySettings(s);

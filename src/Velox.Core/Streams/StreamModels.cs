@@ -16,6 +16,10 @@ public sealed class StreamVariant
     public string? AudioId { get; init; }
     public string? AudioLabel { get; init; }
     public bool HasSeparateAudio => AudioId != null;
+    /// <summary>Contêiner do arquivo final ("mp4", "webm", "mkv", "m4a"); null = decidido na montagem.</summary>
+    public string? Container { get; init; }
+    /// <summary>Tamanho total conhecido (vídeo + áudio) ou -1.</summary>
+    public long SizeBytes { get; init; } = -1;
 
     public long EstimatedBytes(double durationSeconds) => Bandwidth > 0 && durationSeconds > 0 ? (long)(Bandwidth / 8.0 * durationSeconds) : -1;
 }
@@ -31,6 +35,10 @@ public sealed class StreamInfo
     public StreamVariant? Best => Variants.OrderByDescending(v => v.Height).ThenByDescending(v => v.Bandwidth).FirstOrDefault();
     public bool IsEncrypted { get; set; }
     public string? DrmSystem { get; set; }
+    /// <summary>Título/canal/miniatura quando a fonte os informa (YouTube).</summary>
+    public string? Title { get; init; }
+    public string? Uploader { get; init; }
+    public string? Thumbnail { get; init; }
 }
 
 /// <summary>Um segmento a baixar (já com URL absoluta).</summary>
@@ -63,4 +71,8 @@ public sealed class StreamPlan
     public string VideoContainer { get; init; } = "ts";
     public double DurationSeconds { get; init; }
     public bool NeedsMux => Audio.Count > 0;
+    /// <summary>As faixas já são arquivos completos (MP4/WebM do YouTube): sem áudio separado não precisa de remux.</summary>
+    public bool IsCompleteFile { get; init; }
+    /// <summary>Título real do vídeo, para batizar o arquivo quando o nome atual é um provisório.</summary>
+    public string? Title { get; init; }
 }

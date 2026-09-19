@@ -27,7 +27,8 @@ estiver fechado, ele é aberto automaticamente.
   arquivo (qualidades/áudio), abre um painel com tipo e tamanho. Pode ser desligado no popup.
   Funciona com arquivos progressivos (mp4, webm, mp3…) e com streams **HLS/DASH**: o sniffer
   guarda o manifesto master (`.m3u8`/`.mpd`) visto na aba e o Velox baixa os segmentos e
-  junta em MP4 (escolha da qualidade no diálogo do Velox). YouTube e players com DRM não.
+  junta em MP4 (escolha da qualidade no diálogo do Velox). No YouTube (watch/shorts) o botão envia o
+  endereço do vídeo e o Velox extrai as qualidades com o yt-dlp. Players com DRM não.
 
 ## Como funciona
 

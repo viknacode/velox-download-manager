@@ -17,5 +17,7 @@ public enum StreamKind
 {
     File,
     Hls,
-    Dash
+    Dash,
+    /// <summary>Vídeo do YouTube: links extraídos pelo yt-dlp, baixados em faixas pelo Velox.</summary>
+    Youtube
 }

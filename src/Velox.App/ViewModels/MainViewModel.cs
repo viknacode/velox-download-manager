@@ -359,6 +359,24 @@ public sealed class MainViewModel : ObservableObject
         => _manager.ProbeStreamAsync(url, headers, referer, knownContentType, ct);
 
     public string? FfmpegPath => _manager.FfmpegPath;
+    public string? YtDlpPath => _manager.YtDlpPath;
+
+    private Task? _ytInstall;
+
+    /// <summary>Instala yt-dlp (+ Deno se não houver runtime JS); chamadas simultâneas compartilham a mesma instalação.</summary>
+    public Task InstallYoutubeToolsAsync(IProgress<string>? status, CancellationToken ct)
+    {
+        lock (this)
+        {
+            if (_ytInstall is { IsCompleted: false }) return _ytInstall;
+            _ytInstall = _manager.InstallYoutubeToolsAsync(status, ct);
+            _ytInstall.ContinueWith(t =>
+            {
+                if (t.IsCompletedSuccessfully) OnUi(() => Toast("yt-dlp instalado", "Vídeos do YouTube agora podem ser baixados.", "success"));
+            }, TaskScheduler.Default);
+            return _ytInstall;
+        }
+    }
 
     private Task<string>? _ffmpegInstall;
 
@@ -393,7 +411,12 @@ public sealed class MainViewModel : ObservableObject
         var fileName = string.IsNullOrWhiteSpace(msg.FileName) ? null : FileNameHelper.Sanitize(msg.FileName);
         var url = msg.Url!.Trim();
         var kind = GuessStreamKind(url, msg.Mime);
-        if (kind != StreamKind.File && fileName != null)
+        if (kind == StreamKind.Youtube)
+        {
+            fileName = null;           // o extrator batiza pelo título real do vídeo
+            headers.Remove("Cookie");  // os links do googlevideo não usam a sessão do youtube.com
+        }
+        else if (kind != StreamKind.File && fileName != null)
             fileName = System.IO.Path.ChangeExtension(fileName, ".mp4");
 
         var request = new DownloadRequest
@@ -408,6 +431,7 @@ public sealed class MainViewModel : ObservableObject
 
         var source = msg.Source switch
         {
+            "video" when kind == StreamKind.Youtube => "Vídeo do YouTube",
             "video" => "Vídeo capturado do navegador",
             "edge" => "Capturado do Edge",
             "chrome" => "Capturado do Chrome",
@@ -428,6 +452,7 @@ public sealed class MainViewModel : ObservableObject
     /// <summary>Reconhece manifesto HLS/DASH pela extensão ou pelo content-type informado pelo navegador.</summary>
     public static StreamKind GuessStreamKind(string url, string? mime)
     {
+        if (Velox.Core.Streams.YoutubeExtractor.IsYoutubeUrl(url)) return StreamKind.Youtube;
         var m = mime?.ToLowerInvariant() ?? "";
         if (m.Contains("mpegurl")) return StreamKind.Hls;
         if (m.Contains("dash+xml")) return StreamKind.Dash;

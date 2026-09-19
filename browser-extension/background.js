@@ -359,7 +359,8 @@ function extForMedia(url, mime) {
 
 async function sendVideoToVelox(msg, sender) {
   const title = sanitizeFileName(msg.title) || sanitizeFileName(new URL(msg.pageUrl || msg.url).hostname);
-  const fileName = title + extForMedia(msg.url, msg.mime);
+  // YouTube: o Velox extrai título e qualidades pelo yt-dlp; o nome fica por conta dele
+  const fileName = msg.kind === 'youtube' ? '' : title + extForMedia(msg.url, msg.mime);
   const payload = await buildPayload({ url: msg.url, referrer: msg.pageUrl || sender?.tab?.url || '', fileName, mime: msg.mime || '', size: msg.size ?? -1 });
   payload.source = 'video';
   const res = await sendNative(payload);

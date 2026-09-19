@@ -83,6 +83,16 @@ queda de conexão ou reinício do PC.
   grupos de áudio); pode ser instalado por um clique nas Configurações (build oficial
   "essentials") ou apontado manualmente. Sem ffmpeg o resultado fica em `.ts`/arquivos separados.
   Live e DRM (Widevine/PlayReady/FairPlay, `SAMPLE-AES`) são detectados e recusados com aviso.
+- **YouTube** ([YoutubeExtractor.cs](src/Velox.Core/Streams/YoutubeExtractor.cs)): o YouTube não expõe
+  HLS/DASH público — os links do `googlevideo` têm assinatura cifrada e o desafio JS "n" de throttling.
+  O Velox usa o **yt-dlp** só como *extrator* (`yt-dlp -J` com um runtime JS: Deno, Node ou Bun) para
+  obter título, duração, miniatura e os formatos com URL direta; o **download é do próprio engine**:
+  vídeo e áudio divididos em faixas de 8 MB baixadas em paralelo (o googlevideo aceita `Range`),
+  retomáveis, e o ffmpeg junta em MP4/WebM. Qualidades: por resolução/fps o H.264 (MP4) quando existe,
+  senão AV1/VP9, casado com o melhor áudio (AAC/Opus); opção "somente áudio" (M4A). Links expirados
+  (403 após ~6 h) reextraem sozinhos mantendo o progresso. yt-dlp e Deno são instalados por um clique
+  (Configurações ou direto no diálogo) em `%LOCALAPPDATA%\VeloxDM\tools`. Vídeos com login/idade
+  e lives ficam de fora.
 
 **Interface (Velox.App)**
 - Tema escuro com chrome customizado (cantos arredondados via DWM), sidebar com
@@ -92,7 +102,8 @@ queda de conexão ou reinício do PC.
   suporte a retomada), lote de vários links, opções avançadas. Para um `.m3u8`/`.mpd` lê o
   manifesto e mostra as **qualidades** (resolução, bitrate, codec, faixa de áudio), duração e
   se há AES; o card do download mostra a qualidade escolhida, "N de M segmentos", a barra com
-  o padrão real de segmentos e a fase **Juntando**.
+  o padrão real de segmentos e a fase **Juntando**. Para um link do YouTube mostra miniatura, título,
+  canal e as qualidades com tamanho exato (padrão: a melhor até 1080p).
 - Captura de links da área de transferência, arrastar-e-soltar de URLs, atalhos
   (Ctrl+N, Ctrl+V, Delete, Esc), bandeja do sistema com menu e notificações,
   instância única, iniciar com o Windows, toasts in-app.
@@ -112,8 +123,8 @@ queda de conexão ou reinício do PC.
   (`webRequest`, só leitura) encontra o arquivo real mesmo quando o player usa `blob:`;
   com várias opções (qualidades, áudio) abre um painel com tipo e tamanho. Streams
   **HLS/DASH** também: o sniffer guarda o manifesto master (ignorando playlists de variante e
-  os segmentos `.ts`/`.m4s`) e o Velox baixa e junta os pedaços. YouTube e players com
-  DRM continuam fora.
+  os segmentos `.ts`/`.m4s`) e o Velox baixa e junta os pedaços. No **YouTube** o botão envia
+  o endereço do vídeo (watch/shorts) e o Velox extrai as qualidades. Players com DRM continuam fora.
 
   ![Botão de vídeo](docs/screenshot-video-button.png)
 
@@ -167,6 +178,7 @@ src/Velox.Core/            biblioteca sem dependência de UI
   Streams/DashParser.cs    MPD (templates, timeline, lista, base) → lista de segmentos
   Streams/StreamProbe.cs   reconhece manifesto, lista qualidades, monta o plano de download
   Streams/Ffmpeg.cs        localiza/instala o ffmpeg e faz o remux sem recodificar
+  Streams/YoutubeExtractor.cs  yt-dlp (+ Deno) como extrator; formatos → qualidades → faixas de bytes
   Services/DownloadManager fila, concorrência, persistência, estatísticas, auto-retry
   Services/StateStore      downloads.json / settings.json em %LOCALAPPDATA%\VeloxDM
 src/Velox.App/             WPF (MVVM)
@@ -186,5 +198,5 @@ browser-extension/         extensão MV3 (copiada para <saída>/extension)
 Dados do app: `%LOCALAPPDATA%\VeloxDM\` (`downloads.json`, `settings.json`, `velox.log`,
 `com.velox.dm.json` — manifesto do host nativo).
 Arquivos em andamento ficam com a extensão `.vxpart` e são renomeados ao concluir; streams
-guardam os segmentos em `<arquivo>.vxparts/` até a junção. O ffmpeg instalado pelo app fica em
-`%LOCALAPPDATA%\VeloxDM\tools\ffmpeg.exe`.
+guardam os segmentos em `<arquivo>.vxparts/` até a junção. As ferramentas instaladas pelo app
+(ffmpeg, yt-dlp, deno) ficam em `%LOCALAPPDATA%\VeloxDM\tools\`.

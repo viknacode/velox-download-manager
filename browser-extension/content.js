@@ -169,7 +169,22 @@
     return list;
   }
 
+  // youtube.com: o player usa links cifrados do googlevideo; o Velox extrai pelo endereço da página (watch/shorts)
+  function youtubeWatchUrl() {
+    const h = location.hostname;
+    if (!/(^|\.)youtube\.com$|(^|\.)youtube-nocookie\.com$|^youtu\.be$/.test(h)) return null;
+    let id = null;
+    const m = /^\/(?:shorts|embed|live|v)\/([A-Za-z0-9_-]{11})/.exec(location.pathname);
+    if (m) id = m[1];
+    else if (location.pathname === '/watch') id = new URLSearchParams(location.search).get('v');
+    else if (h === 'youtu.be') id = location.pathname.slice(1, 12);
+    return id && /^[A-Za-z0-9_-]{11}$/.test(id) ? 'https://www.youtube.com/watch?v=' + id : null;
+  }
+
   async function gather(video) {
+    const yt = youtubeWatchUrl();
+    if (yt) return [{ url: yt, type: '', size: -1, kind: 'youtube', origin: 'page' }];
+    if (/(^|\.)youtube\.com$/.test(location.hostname)) return []; // prévias da home etc.: sem vídeo identificável
     const direct = directSources(video);
     let sniffed = [];
     try { sniffed = (await chrome.runtime.sendMessage({ type: 'getMedia' }))?.media || []; } catch (err) { dbg('getMedia falhou', String(err)); }
@@ -208,6 +223,7 @@
   }
 
   function kindOf(m) {
+    if (m.kind === 'youtube') return 'YOUTUBE';
     if (m.kind === 'hls') return 'HLS';
     if (m.kind === 'dash') return 'DASH';
     const t = (m.type || '').split(';')[0].trim();
@@ -264,7 +280,7 @@
     let res;
     try {
       res = await chrome.runtime.sendMessage({
-        type: 'sendVideo', url: m.url, mime: m.type || '', size: m.size ?? -1,
+        type: 'sendVideo', url: m.url, mime: m.type || '', size: m.size ?? -1, kind: m.kind || '',
         pageUrl: location.href, title: document.title || ''
       });
     } catch (err) { res = { ok: false, error: String(err) }; }

@@ -191,7 +191,9 @@ public sealed class DownloadItemViewModel : ObservableObject
         };
 
         IsStream = m.IsStream;
-        VariantLabel = m.IsStream ? (m.VariantLabel ?? (m.Kind == StreamKind.Dash ? "DASH" : "HLS")) : "";
+        VariantLabel = m.IsStream
+            ? (m.Kind == StreamKind.Youtube ? "YouTube" + (m.VariantLabel != null ? " · " + m.VariantLabel : "") : m.VariantLabel ?? (m.Kind == StreamKind.Dash ? "DASH" : "HLS"))
+            : "";
         string approx = m.TotalIsEstimate ? "≈" : "";
         PercentText = m.TotalSize > 0 || IsCompleted || (m.IsStream && m.StreamSegmentsTotal > 0) ? FormatHelper.Percent(m.Progress) : "";
         ProgressText = m.Status == DownloadStatus.Completed

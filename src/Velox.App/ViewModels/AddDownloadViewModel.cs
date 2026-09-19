@@ -35,6 +35,7 @@ public sealed class AddDownloadViewModel : ObservableObject
         PasteCommand = new RelayCommand(Paste);
         BrowseCommand = new RelayCommand(Browse);
         InstallFfmpegCommand = new AsyncRelayCommand(InstallFfmpegAsync, () => !_ffmpegInstalling && !HasFfmpeg);
+        InstallYtDlpCommand = new AsyncRelayCommand(InstallYtDlpAsync, () => !_ytInstalling);
 
         if (urls != null && urls.Count > 1)
         {
@@ -79,6 +80,7 @@ public sealed class AddDownloadViewModel : ObservableObject
     public ICommand PasteCommand { get; }
     public ICommand BrowseCommand { get; }
     public ICommand InstallFfmpegCommand { get; }
+    public ICommand InstallYtDlpCommand { get; }
 
     public List<CategoryOption> Categories { get; }
 
@@ -233,7 +235,10 @@ public sealed class AddDownloadViewModel : ObservableObject
                 ? new List<VariantOption>()
                 : value.Variants.Select(v => new VariantOption(v, this)).ToList();
             OnPropertyChanged(nameof(Variants));
-            _selectedVariant = value?.Best;
+            // YouTube: 4K é enorme (e AV1); começa na melhor até 1080p, o usuário sobe se quiser
+            _selectedVariant = value?.Kind == StreamKind.Youtube
+                ? value.Variants.Where(v => v.Height > 0 && v.Height <= 1080).OrderByDescending(v => v.Height).ThenByDescending(v => v.FrameRate).FirstOrDefault() ?? value.Best
+                : value?.Best;
             foreach (var v in Variants) v.NotifySelection();
             OnPropertyChanged(nameof(IsStream));
             OnPropertyChanged(nameof(StreamTitle));
@@ -242,9 +247,52 @@ public sealed class AddDownloadViewModel : ObservableObject
             OnPropertyChanged(nameof(HasFfmpeg));
             OnPropertyChanged(nameof(FfmpegNote));
             OnPropertyChanged(nameof(ConnectionsMax));
+            OnPropertyChanged(nameof(IsYoutube));
+            _thumbnail = null;
+            OnPropertyChanged(nameof(Thumbnail));
             if (value != null) Connections = Math.Clamp(_main.Settings.StreamConnections, 1, 16);
             else Connections = _main.Settings.ConnectionsPerDownload;
         }
+    }
+
+    public bool IsYoutube => _stream?.Kind == StreamKind.Youtube;
+
+    private System.Windows.Media.ImageSource? _thumbnail;
+    /// <summary>Miniatura (YouTube), baixada pelo WPF em segundo plano.</summary>
+    public System.Windows.Media.ImageSource? Thumbnail
+    {
+        get
+        {
+            if (_thumbnail == null && _stream?.Thumbnail != null && Uri.TryCreate(_stream.Thumbnail, UriKind.Absolute, out var uri))
+            {
+                try
+                {
+                    var bmp = new System.Windows.Media.Imaging.BitmapImage();
+                    bmp.BeginInit();
+                    bmp.UriSource = uri;
+                    bmp.DecodePixelWidth = 192;
+                    bmp.EndInit();
+                    _thumbnail = bmp;
+                }
+                catch { }
+            }
+            return _thumbnail;
+        }
+    }
+
+    /// <summary>Nome sugerido para um stream: título (YouTube) ou nome derivado da URL, com a extensão do contêiner da qualidade.</summary>
+    private void SuggestStreamFileName()
+    {
+        if (_stream == null) return;
+        var variant = _selectedVariant ?? _stream.Best;
+        var ext = "." + (variant?.Container is "mp4" or "webm" or "mkv" or "m4a" ? variant.Container : "mp4");
+        string baseName;
+        if (!string.IsNullOrWhiteSpace(_stream.Title))
+            baseName = FileNameHelper.Sanitize(_stream.Title);
+        else
+            baseName = Path.GetFileNameWithoutExtension(string.IsNullOrWhiteSpace(_fileName) ? StreamFileName(_probe?.FileName, _stream.ManifestUrl) : _fileName);
+        Set(ref _fileName, baseName + ext, nameof(FileName));
+        if (!_categoryEdited) SetCategoryInternal(variant?.Container == "m4a" ? CategoryDetector.Music : CategoryDetector.Video);
     }
 
     public bool IsStream => _stream != null;
@@ -262,10 +310,16 @@ public sealed class AddDownloadViewModel : ObservableObject
             _selectedVariant = value;
             OnPropertyChanged();
             foreach (var v in Variants) v.NotifySelection();
+            if (!_fileNameEdited || IsStreamName(_fileName)) SuggestStreamFileName();
         }
     }
 
-    public string StreamTitle => _stream == null ? "" : _stream.Kind == StreamKind.Dash ? "Stream DASH (MPEG-DASH)" : "Stream HLS (m3u8)";
+    private static bool IsStreamName(string name) =>
+        name.EndsWith(".m3u8", StringComparison.OrdinalIgnoreCase) || name.EndsWith(".mpd", StringComparison.OrdinalIgnoreCase) || name.StartsWith("youtube-", StringComparison.OrdinalIgnoreCase);
+
+    public string StreamTitle => _stream == null ? ""
+        : _stream.Kind == StreamKind.Youtube ? (_stream.Title ?? "Vídeo do YouTube")
+        : _stream.Kind == StreamKind.Dash ? "Stream DASH (MPEG-DASH)" : "Stream HLS (m3u8)";
 
     public string StreamSummary
     {
@@ -273,6 +327,7 @@ public sealed class AddDownloadViewModel : ObservableObject
         {
             if (_stream == null) return "";
             var parts = new List<string>();
+            if (_stream.Kind == StreamKind.Youtube) parts.Add("YouTube" + (!string.IsNullOrWhiteSpace(_stream.Uploader) ? " · " + _stream.Uploader : ""));
             if (_stream.DurationSeconds > 0) parts.Add(FormatHelper.Duration(_stream.DurationSeconds));
             parts.Add(_stream.Variants.Count == 1 ? "1 qualidade" : $"{_stream.Variants.Count} qualidades");
             if (_stream.IsEncrypted && _stream.DrmSystem == null) parts.Add("AES-128");
@@ -286,6 +341,37 @@ public sealed class AddDownloadViewModel : ObservableObject
     private bool _ffmpegInstalling;
     private string _ffmpegProgress = "";
     public string FfmpegProgress { get => _ffmpegProgress; private set => Set(ref _ffmpegProgress, value); }
+
+    private bool _needsYtDlp;
+    /// <summary>URL do YouTube sem yt-dlp instalado: mostra o botão de instalar no lugar da sondagem.</summary>
+    public bool NeedsYtDlp { get => _needsYtDlp; private set { if (Set(ref _needsYtDlp, value)) OnPropertyChanged(nameof(CanDownload)); } }
+
+    private bool _ytInstalling;
+    private string _ytProgress = "";
+    public string YtDlpProgress { get => _ytProgress; private set => Set(ref _ytProgress, value); }
+
+    private async Task InstallYtDlpAsync()
+    {
+        _ytInstalling = true;
+        System.Windows.Input.CommandManager.InvalidateRequerySuggested();
+        try
+        {
+            YtDlpProgress = "Baixando yt-dlp…";
+            await _main.InstallYoutubeToolsAsync(new Progress<string>(t => YtDlpProgress = t), CancellationToken.None);
+            YtDlpProgress = "";
+            NeedsYtDlp = false;
+            _ = ProbeDebouncedAsync(); // sonda de novo, agora com o extrator
+        }
+        catch (Exception ex)
+        {
+            YtDlpProgress = "Falha ao instalar: " + ex.Message;
+        }
+        finally
+        {
+            _ytInstalling = false;
+            System.Windows.Input.CommandManager.InvalidateRequerySuggested();
+        }
+    }
 
     public string FfmpegNote => HasFfmpeg
         ? "Os segmentos serão juntados em um MP4 pelo ffmpeg."
@@ -386,6 +472,13 @@ public sealed class AddDownloadViewModel : ObservableObject
         {
             await Task.Delay(450, cts.Token);
             ProbeState = "loading";
+
+            if (YoutubeExtractor.IsYoutubeUrl(url))
+            {
+                await ProbeYoutubeAsync(url, version, cts.Token);
+                return;
+            }
+            NeedsYtDlp = false;
             ProbeMessage = "Consultando servidor…";
 
             var result = await _main.ProbeAsync(url, ParseHeaders(), string.IsNullOrWhiteSpace(_referer) ? null : _referer, cts.Token);
@@ -487,6 +580,35 @@ public sealed class AddDownloadViewModel : ObservableObject
 
     private static string HostOf(string url) => Uri.TryCreate(url, UriKind.Absolute, out var u) ? u.Host : url;
 
+    /// <summary>YouTube: sem sondagem HTTP — o yt-dlp lista título, duração e formatos (links diretos do googlevideo).</summary>
+    private async Task ProbeYoutubeAsync(string url, int version, CancellationToken ct)
+    {
+        Probe = null;
+        if (_main.YtDlpPath == null)
+        {
+            NeedsYtDlp = true;
+            ProbeState = "error";
+            ProbeMessage = "Para baixar do YouTube o Velox usa o yt-dlp (extrator de links) — instale com um clique. Os downloads continuam sendo feitos pelo engine do Velox.";
+            return;
+        }
+        NeedsYtDlp = false;
+        ProbeMessage = "Consultando o YouTube (yt-dlp)…";
+        var info = await _main.ProbeStreamAsync(url, null, null, null, ct);
+        if (version != _probeVersion) return;
+        if (info == null) throw new Velox.Core.DownloadException("O yt-dlp não reconheceu este link.", false);
+
+        Stream = info;
+        ProbeState = info.IsLive || info.Variants.Count == 0 ? "error" : "ok";
+        ProbeSizeText = info.DurationSeconds > 0 ? FormatHelper.Duration(info.DurationSeconds) : "duração desconhecida";
+        ProbeTypeText = "YouTube";
+        ProbeHostText = info.Uploader ?? "youtube.com";
+        ProbeResumable = true;
+        ProbeMessage = info.IsLive ? "Transmissão ao vivo — só vídeos já publicados podem ser baixados."
+            : info.Variants.Count == 0 ? "O YouTube não devolveu nenhum formato baixável para este vídeo."
+            : $"Vídeo reconhecido — {info.Variants.Count} {(info.Variants.Count == 1 ? "opção" : "opções")} de qualidade";
+        if (!_fileNameEdited || IsStreamName(_fileName)) SuggestStreamFileName();
+    }
+
     private static readonly string[] GenericStreamNames = { "index", "master", "playlist", "manifest", "video", "stream", "prog_index", "chunklist", "hls", "dash" };
 
     /// <summary>Nome de saída para um stream: troca .m3u8/.mpd por .mp4 e evita nomes genéricos (playlist, manifest, index…).</summary>
@@ -533,7 +655,7 @@ public sealed class AddDownloadViewModel : ObservableObject
     // ------------------------------------------------------------ envio
     public bool CanDownload => _isBatch
         ? Services.UrlHelper.ExtractUrls(_batchUrls).Count > 0
-        : Services.UrlHelper.IsHttpUrl(_url.Trim()) && !IsProbing
+        : Services.UrlHelper.IsHttpUrl(_url.Trim()) && !IsProbing && !_needsYtDlp
           && !(_stream != null && (_stream.IsLive || _stream.DrmSystem != null || _stream.Variants.Count == 0));
 
     private bool CanSubmit() => CanDownload && !string.IsNullOrWhiteSpace(_directory);
@@ -637,8 +759,16 @@ public sealed class AddDownloadViewModel : ObservableObject
             {
                 var parts = new List<string>();
                 if (Variant.Width > 0 && Variant.Height > 0) parts.Add($"{Variant.Width}×{Variant.Height}");
-                if (!string.IsNullOrEmpty(Variant.Codecs)) parts.Add(Variant.Codecs.Split(',')[0].Split('.')[0]);
+                if (!string.IsNullOrEmpty(Variant.Codecs) && Variant.Height > 0)
+                {
+                    // "avc1.64002a" → "avc1"; nomes amigáveis ("H.264", "AV1") ficam como estão
+                    var codec = Variant.Codecs.Split(',')[0].Trim();
+                    if (System.Text.RegularExpressions.Regex.IsMatch(codec, @"^[a-z0-9]{3,5}\.[0-9a-fA-F.]+$")) codec = codec.Split('.')[0];
+                    parts.Add(codec);
+                }
                 if (Variant.HasSeparateAudio && !string.IsNullOrEmpty(Variant.AudioLabel)) parts.Add("áudio: " + Variant.AudioLabel);
+                else if (Variant.Height == 0 && !string.IsNullOrEmpty(Variant.AudioLabel)) parts.Add(Variant.AudioLabel);
+                if (Variant.SizeBytes > 0) parts.Add(FormatHelper.Bytes(Variant.SizeBytes));
                 return string.Join(" · ", parts);
             }
         }

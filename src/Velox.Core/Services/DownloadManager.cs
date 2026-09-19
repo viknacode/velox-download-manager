@@ -2,6 +2,7 @@ using System.Diagnostics;
 using Velox.Core.Engine;
 using Velox.Core.Models;
 using Velox.Core.Streams;
+using Velox.Core.Utils;
 
 namespace Velox.Core.Services;
 
@@ -102,15 +103,41 @@ public sealed class DownloadManager : IDisposable
         => UrlProber.ProbeAsync(_http, url, headers, referer, ct);
 
     /// <summary>Se a URL for um manifesto HLS/DASH, devolve as variantes; senão null.</summary>
-    public Task<StreamInfo?> ProbeStreamAsync(string url, IDictionary<string, string>? headers, string? referer,
+    public async Task<StreamInfo?> ProbeStreamAsync(string url, IDictionary<string, string>? headers, string? referer,
         string? knownContentType, CancellationToken ct = default)
-        => StreamProbe.ProbeAsync(_http, url, headers, referer, knownContentType, ct);
+    {
+        if (YoutubeExtractor.IsYoutubeUrl(url))
+        {
+            var ytDlp = YtDlpPath ?? throw new DownloadException("Baixar do YouTube precisa do yt-dlp — instale em Configurações → Vídeos em stream.", false);
+            var info = await YoutubeExtractor.ExtractAsync(ytDlp, JsRuntime, url, ct).ConfigureAwait(false);
+            return YoutubeExtractor.ToStreamInfo(info, url);
+        }
+        return await StreamProbe.ProbeAsync(_http, url, headers, referer, knownContentType, ct).ConfigureAwait(false);
+    }
 
     /// <summary>ffmpeg.exe disponível (configuração, pasta tools ou PATH), ou null.</summary>
     public string? FfmpegPath => Ffmpeg.Locate(DataDirectory, Settings.FfmpegPath);
+    public string? YtDlpPath => YoutubeExtractor.LocateYtDlp(DataDirectory, Settings.YtDlpPath);
+    public JsRuntime? JsRuntime => YoutubeExtractor.LocateJsRuntime(DataDirectory);
+    public ToolPaths Tools => new(FfmpegPath, YtDlpPath, JsRuntime);
 
     public Task<string> InstallFfmpegAsync(IProgress<(long Done, long Total)>? progress, CancellationToken ct)
         => Ffmpeg.InstallAsync(DataDirectory, _http, progress, ct);
+
+    /// <summary>Instala o yt-dlp e, se não houver deno/node/bun na máquina, o Deno (runtime JS que o yt-dlp exige para o YouTube).</summary>
+    public async Task InstallYoutubeToolsAsync(IProgress<string>? status, CancellationToken ct)
+    {
+        var p = new Progress<(long Done, long Total)>(x => status?.Report(x.Total > 0
+            ? $"Baixando yt-dlp… {x.Done * 100 / x.Total}%" : $"Baixando yt-dlp… {FormatHelper.Bytes(x.Done)}"));
+        await YoutubeExtractor.InstallYtDlpAsync(DataDirectory, _http, p, ct).ConfigureAwait(false);
+        if (JsRuntime == null)
+        {
+            var pd = new Progress<(long Done, long Total)>(x => status?.Report(x.Total > 0
+                ? $"Baixando Deno (runtime JS)… {x.Done * 100 / x.Total}%" : $"Baixando Deno… {FormatHelper.Bytes(x.Done)}"));
+            await YoutubeExtractor.InstallDenoAsync(DataDirectory, _http, pd, ct).ConfigureAwait(false);
+        }
+        status?.Report("");
+    }
 
     // ------------------------------------------------------------------ operações
 
@@ -119,7 +146,12 @@ public sealed class DownloadManager : IDisposable
         var url = request.Url.Trim();
         var dir = string.IsNullOrWhiteSpace(request.Directory) ? Settings.DownloadDirectory : request.Directory!;
 
+        if (request.Kind == StreamKind.File && YoutubeExtractor.IsYoutubeUrl(url))
+            request = new DownloadRequest { Url = request.Url, FileName = request.FileName, Directory = request.Directory, MaxConnections = request.MaxConnections, Referer = request.Referer, Headers = request.Headers, ExpectedHash = request.ExpectedHash, Category = request.Category, StartImmediately = request.StartImmediately, Probe = request.Probe, Kind = StreamKind.Youtube, VariantId = request.VariantId, VariantLabel = request.VariantLabel };
+
         var name = request.FileName;
+        if (string.IsNullOrWhiteSpace(name) && request.Kind == StreamKind.Youtube && YoutubeExtractor.TryGetVideoId(url, out var ytId))
+            name = "youtube-" + ytId + ".mp4"; // provisório: o download troca pelo título real
         if (string.IsNullOrWhiteSpace(name))
             name = request.Probe?.FileName ?? FileNameHelper.FromUrl(url);
         name = FileNameHelper.Sanitize(name!);
@@ -363,7 +395,7 @@ public sealed class DownloadManager : IDisposable
                 if (_tasks.ContainsKey(item.Id)) continue;
 
                 IDownloadTask task = item.IsStream
-                    ? new StreamDownloadTask(item, _http, Settings, _limiter, FfmpegPath)
+                    ? new StreamDownloadTask(item, _http, Settings, _limiter, Tools)
                     : new DownloadTask(item, _http, Settings, _limiter);
                 _tasks[item.Id] = task;
                 started.Add(task);

@@ -141,6 +141,17 @@
                         </Grid>
                         <StackPanel Grid.Column="1" VerticalAlignment="Center">
                             <TextBlock Text="{Binding ProbeMessage}" FontSize="12.5" TextWrapping="Wrap" />
+                            <StackPanel Orientation="Horizontal" Margin="0,8,0,2" Visibility="{Binding NeedsYtDlp, Converter={StaticResource BoolToVis}}">
+                                <Button Style="{StaticResource PrimaryButton}" Command="{Binding InstallYtDlpCommand}" Padding="12,6" MinWidth="0"
+                                        ToolTip="Baixa o yt-dlp (~18 MB) e, se preciso, o Deno (~45 MB) para a pasta do Velox">
+                                    <StackPanel Orientation="Horizontal">
+                                        <TextBlock Style="{StaticResource Icon}" Text="&#xE896;" FontSize="12" Margin="0,0,8,0" />
+                                        <TextBlock Text="Instalar yt-dlp" FontSize="12" />
+                                    </StackPanel>
+                                </Button>
+                                <TextBlock Text="{Binding YtDlpProgress}" Style="{StaticResource Muted}" Foreground="{StaticResource Accent2Brush}"
+                                           VerticalAlignment="Center" Margin="12,0,0,0" />
+                            </StackPanel>
                             <StackPanel Orientation="Horizontal" Margin="0,4,0,0"
                                         Visibility="{Binding ProbeOk, Converter={StaticResource BoolToVis}}">
                                 <TextBlock Text="{Binding ProbeSizeText}" Style="{StaticResource Muted}" FontWeight="SemiBold" />
@@ -178,13 +189,26 @@
                         Visibility="{Binding IsStream, Converter={StaticResource BoolToVis}}">
                     <StackPanel>
                         <Grid>
-                            <StackPanel Orientation="Horizontal">
-                                <TextBlock Style="{StaticResource Icon}" Text="&#xE93E;" FontSize="15" Foreground="{StaticResource AccentBrush}"
-                                           VerticalAlignment="Center" Margin="0,0,10,0" />
-                                <TextBlock Text="{Binding StreamTitle}" FontWeight="SemiBold" FontSize="12.5" VerticalAlignment="Center" />
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <Border Width="96" Height="54" CornerRadius="6" Margin="0,0,12,0" Background="{StaticResource Surface3Brush}"
+                                    Visibility="{Binding Thumbnail, Converter={StaticResource NullToVis}}">
+                                <Border.Clip>
+                                    <RectangleGeometry Rect="0,0,96,54" RadiusX="6" RadiusY="6" />
+                                </Border.Clip>
+                                <Image Source="{Binding Thumbnail}" Stretch="UniformToFill" />
+                            </Border>
+                            <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock Style="{StaticResource Icon}" Text="&#xE93E;" FontSize="15" Foreground="{StaticResource AccentBrush}"
+                                               VerticalAlignment="Center" Margin="0,0,10,0" Visibility="{Binding IsYoutube, Converter={StaticResource InvBoolToVis}}" />
+                                    <TextBlock Text="{Binding StreamTitle}" FontWeight="SemiBold" FontSize="12.5" VerticalAlignment="Center"
+                                               TextTrimming="CharacterEllipsis" MaxWidth="440" ToolTip="{Binding StreamTitle}" />
+                                </StackPanel>
+                                <TextBlock Text="{Binding StreamSummary}" Style="{StaticResource Muted}" Margin="0,3,0,0" TextWrapping="Wrap" />
                             </StackPanel>
-                            <TextBlock Text="{Binding StreamSummary}" Style="{StaticResource Muted}" HorizontalAlignment="Right"
-                                       VerticalAlignment="Center" />
                         </Grid>
 
                         <StackPanel Visibility="{Binding HasManyVariants, Converter={StaticResource BoolToVis}}">
